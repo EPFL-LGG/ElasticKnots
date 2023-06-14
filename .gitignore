@@ -1,0 +1,16 @@
+build*
+debug
+results
+TODO
+*.png
+.DS_Store
+*.so
+*.pyc
+__pycache__
+*__init__.py
+.ipynb_checkpoints
+*.msh
+bin/
+.vs/
+.vscode/
+data/

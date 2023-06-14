@@ -1,0 +1,5 @@
+pybind11_add_module(elastic_knots elastic_knots.cc)
+set_target_properties(elastic_knots PROPERTIES CXX_STANDARD 14)
+set_target_properties(elastic_knots PROPERTIES CXX_STANDARD_REQUIRED ON)
+set_target_properties(elastic_knots PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/python)
+target_link_libraries(elastic_knots PUBLIC ElasticRods ElasticKnots intel_pybind_14_hack)

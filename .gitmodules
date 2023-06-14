@@ -1,0 +1,12 @@
+[submodule "3rdparty/braid-generator"]
+	path = 3rdparty/braid-generator
+	url = https://github.com/MicheleVidulis/Knots.git
+[submodule "3rdparty/Tight-Inclusion"]
+	path = 3rdparty/Tight-Inclusion
+	url = https://github.com/Continuous-Collision-Detection/Tight-Inclusion.git
+[submodule "3rdparty/ipc-toolkit"]
+	path = 3rdparty/ipc-toolkit
+	url = https://github.com/ipc-sim/ipc-toolkit.git
+[submodule "3rdparty/ElasticRods"]
+	path = 3rdparty/ElasticRods
+	url = https://github.com/jpanetta/ElasticRods.git
