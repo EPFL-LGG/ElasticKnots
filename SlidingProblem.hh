@@ -367,7 +367,7 @@ struct SlidingProblem : public NewtonProblem {
 };
 
 
-void minimize_twist(ElasticRod &rod, bool verbose = false);
+void minimize_twist(PeriodicRod &rod, bool verbose = false);
 void spread_twist_preserving_link(PeriodicRod &pr, bool verbose = false);
 
 

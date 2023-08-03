@@ -168,12 +168,12 @@ PYBIND11_MODULE(elastic_knots, m) {
     // ----------------------------------------------------------------------------
 
     m.def("minimize_twist",
-        [](ElasticRod &rod, bool verbose) {
+        [](PeriodicRod &pr, bool verbose) {
             py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
             py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
-            return minimize_twist(rod, verbose);
+            return minimize_twist(pr, verbose);
         },
-        py::arg("rod"),
+        py::arg("pr"),
         py::arg("verbose") = false
     );
 
@@ -183,7 +183,7 @@ PYBIND11_MODULE(elastic_knots, m) {
             py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
             return spread_twist_preserving_link(pr, verbose);
         },
-        py::arg("periodicRod"),
+        py::arg("pr"),
         py::arg("verbose") = false
     );
 

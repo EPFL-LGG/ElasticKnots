@@ -40,8 +40,10 @@ void SlidingProblem::m_iterationCallback(size_t i) {
     BENCHMARK_STOP_TIMER("CustomCallback");
 }
 
-void minimize_twist(ElasticRod &rod, bool verbose) {
-    // Minimize twisting energy wrt theta (from RodLinkage.cc)
+void minimize_twist(PeriodicRod &pr, bool verbose) {
+    // Get the underlying ElasticRod object and
+    // minimize twisting energy wrt theta (from RodLinkage.cc)
+    ElasticRod &rod = pr.rod;
     const size_t ne = rod.numEdges();
     auto pts = rod.deformedPoints();
     auto ths = rod.thetas();
