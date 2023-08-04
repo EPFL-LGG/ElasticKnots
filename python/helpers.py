@@ -26,9 +26,9 @@ def define_periodic_rod(pts, material, rest_curv_rad=np.inf, total_opening_angle
     
     # Set rest curvature
     if rest_curv_rad != np.inf:
-        restLengths = np.linalg.norm(np.diff(pts, axis=0), axis=1)
-        restKappas = compute_rest_kappas(rest_curv_rad=rest_curv_rad, restLengths=restLengths)
-        pr.rod.setRestKappas(restKappas)
+        rest_lengths = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        rest_kappas = compute_rest_kappas(rest_curv_rad=rest_curv_rad, rest_lengths=rest_lengths)
+        pr.rod.setRestKappas(rest_kappas)
         
     # Set the bending energy type to match the definition from [Bergou et al. 2010]
     # The bending energy in [Bergou et al. 2008] is technically non-physical.
@@ -631,7 +631,7 @@ def build_clustered_grid(rods, eq_clusters, grid_step=None, step_factor=1):
     return PeriodicRodList(newRods)
 
 
-def build_regular_grid(rods, grid_step=None, grid_step_x=None, grid_step_y=None, nRows=None, nCols=None, step_factor=1.0):
+def build_regular_grid(rods, grid_step=None, grid_step_x=None, grid_step_y=None, n_rows=None, n_cols=None, step_factor=1.0):
     """
     Rectangular grid (each column has same #rows).
     Input: list of PeriodicRods.
@@ -648,15 +648,15 @@ def build_regular_grid(rods, grid_step=None, grid_step_x=None, grid_step_y=None,
         assert(grid_step_x is not None and grid_step_y is not None)
         
     nRods = len(rods)
-    if not ((nRows is None) ^ (nCols is None)):
-        nRows = int(np.ceil(np.sqrt(nRods)))
+    if not ((n_rows is None) ^ (n_cols is None)):
+        n_rows = int(np.ceil(np.sqrt(nRods)))
 
     # Build PeriodicRodList with translated rods
-    # Only one between nRows and nCols is not None
-    if nRows is not None:
-        rodsPerRow = int(np.ceil(nRods / nRows))
-    elif nCols is not None:
-        rodsPerRow = nCols
+    # Only one between n_rows and n_cols is not None
+    if n_rows is not None:
+        rodsPerRow = int(np.ceil(nRods / n_rows))
+    elif n_cols is not None:
+        rodsPerRow = n_cols
         
     newRods = []
     for i, r in enumerate(rods):
@@ -793,6 +793,21 @@ def read_nodes_from_file(file):
         return np.array(nodes)
     
 
+def load_rods_from_dataframe(df, data_path, material, n_rows=None, n_cols=None, step_factor=1, grid_step_x=None, grid_step_y=None):
+    knot_types = df['knot_type']
+    eq_ids = df['eq_id']
+    
+    rods = []
+    for knot_type, eq_id in zip(knot_types, eq_ids):
+        file = data_path + knot_type + '/' + str(eq_id).zfill(4) + '.obj'
+        pts = read_nodes_from_file(file)
+        pts_aligned = align_point_cloud_principal_components_to_axes(pts)
+        pr = define_periodic_rod(pts_aligned, material, minimize_twist=True)
+        rods.append(pr)
+        
+    # rodsList = build_grid(rods)
+    rodsList = build_regular_grid(rods, n_rows=n_rows, n_cols=n_cols, step_factor=step_factor, grid_step_x=grid_step_x, grid_step_y=grid_step_y)
+    return rodsList
 # ------------------------------------------------------------------------
 #                                 Misc
 # ------------------------------------------------------------------------
@@ -801,10 +816,10 @@ def load_knot_table(path='../data/knotinfo_table.csv'):
     "Parse the KnotInfo knot table (source: https://knotinfo.math.indiana.edu)"
     
     import pandas as pd
-    knots_data = pd.read_csv(path)
-    knots_data['Braid Notation'] = knots_data['Braid Notation'].apply(lambda x: list(x.split('};{'))[0][1::] + '}' if x.startswith('[') else x) # get only first braid word if multiple are present
-    knots_data['Braid Notation'] = knots_data['Braid Notation'].apply(lambda x: list(map(int, x.replace('{', '').replace('}', '').split(';')))) # parse braid word to list
-    return knots_data
+    knot_data = pd.read_csv(path)
+    knot_data['Braid Notation'] = knot_data['Braid Notation'].apply(lambda x: list(x.split('};{'))[0][1::] + '}' if x.startswith('[') else x) # get only first braid word if multiple are present
+    knot_data['Braid Notation'] = knot_data['Braid Notation'].apply(lambda x: list(map(int, x.replace('{', '').replace('}', '').split(';')))) # parse braid word to list
+    return knot_data
 
 
 def sorted_nicely(l): 
@@ -820,16 +835,25 @@ def sorted_nicely(l):
     return sorted(l, key = alphanum_key)
 
 
-def download_data(gdrive_id, output_dir, filename, unzip=True, delete_zip=True):
-    "Download and unzip data from GDrive (see https://go.epfl.ch/knots)"
+def download_data(gdrive_id, output_dir, zip_file, unzip=True, delete_zip=True):
+    "Download and unzip data from GDrive"
     import gdown
     import zipfile
     from tqdm import tqdm
-    
-    target_zip = output_dir + filename    
+        
+    target_zip = output_dir + zip_file
+    target_dir = target_zip.replace('.zip', '')
+    if unzip and os.path.isdir(target_dir):
+        print('Directory {} already exists'.format(target_dir))
+        return
     if os.path.isfile(target_zip):
-        raise ValueError('File {} already exists'.format(target_zip))
-    gdown.download(id=gdrive_id, output=target_zip, quiet=False)
+        if not unzip:
+            print('File {} already exists'.format(target_zip))
+            return
+        else:
+            print('File {} already exists; unzipping...'.format(target_zip))
+    else:
+        gdown.download(id=gdrive_id, output=target_zip, quiet=False)
     
     if unzip:
         with zipfile.ZipFile(target_zip) as zf:

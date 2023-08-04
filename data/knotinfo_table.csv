@@ -1,4 +1,5 @@
 Name,Alternating,DT Name,DT Rank,DT Notation,Conway Notation,Gauss Notation,PD Notation,Crossing Number,Unknotting Number,Bridge Index,Braid Index,Braid Length,Braid Notation,Symmetry Type,Full Symmetry Group,Montesinos Notation
+0_1,Y,?,?,?,?,?,?,0,0,1,1,0,{1;-1;1},?,?,?
 3_1,Y,3a_1,2,[4; 6; 2],[3],{1; -2; 3; -1; 2; -3},[[1;5;2;4];[3;1;4;6];[5;3;6;2]],3,1,2,2,3,{1;1;1},reversible,Z2,K(1/3)
 4_1,Y,4a_1,3,[4; 6; 8; 2],[22],{-1; 2; -3; 1; -4; 3; -2; 4},[[4;2;5;1];[8;6;1;5];[6;3;7;4];[2;7;3;8]],4,1,2,3,4,{1;-2;1;-2},fully amphicheiral,D4,K(2/5)
 5_1,Y,5a_2,5,[6; 8; 10; 2; 4],[5],{-1; 2; -3; 4; -5; 1; -2; 3; -4; 5},[[2;8;3;7];[4;10;5;9];[6;2;7;1];[8;4;9;3];[10;6;1;5]],5,2,2,2,5,{1;1;1;1;1},reversible,Z2,K(1/5)
