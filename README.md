@@ -14,7 +14,7 @@ To install the required dependencies, please follow the instructions from https:
 Clone this repository *recursively* so that its submodules are also downloaded:
 
 ```
-git clone git@github.com:EPFL-LGG/ElasticKnots_release.git --recurse-submodules
+git clone git@github.com:EPFL-LGG/ElasticKnots.git --recurse-submodules
 ```
 
 Build the C++ code and its Python bindings using cmake and your favorite build system. For example, with `ninja`:
