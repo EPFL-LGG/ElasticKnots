@@ -186,7 +186,6 @@ dependencies:
     - future==0.18.2
     - gdown==4.7.1
     - hsluv==5.0.3
-    - ipc-toolkit==0.0.1
     - ipydatawidgets==4.3.1.post1
     - joblib==1.2.0
     - lmfit==1.0.3
