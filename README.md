@@ -10,20 +10,26 @@ To know more about our research, please visit the project [webpage](https://www.
 ## C++ Code Dependencies
 To install the required dependencies, please follow the instructions from https://github.com/jpanetta/ElasticRods
 
-## Python Dependencies
-The file `environment.yml` contains all the Python dependencies needed to run the demo Jupyter notebooks.
-To create the conda environment `ElasticKnots` run:
-```
-conda env create -f environment.yml
-```
-
-## Obtaining and Building
+## Obtaining the Code
 Clone this repository *recursively* so that its submodules are also downloaded:
 
 ```
 git clone git@github.com:EPFL-LGG/ElasticKnots.git --recurse-submodules
 ```
 
+## Python Dependencies
+The file `environment.yml` contains all the Python dependencies needed to run the demo Jupyter notebooks.
+Create the conda environment `ElasticKnots`
+```
+conda env create -f environment.yml
+```
+
+and activate it (make sure to do this before compiling the Python bindings):
+```
+conda activate ElasticKnots
+```
+
+## Building
 Build the C++ code and its Python bindings using cmake and your favorite build system. For example, with `ninja`:
 
 ```
