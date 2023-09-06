@@ -70,10 +70,10 @@ struct SlidingProblem : public NewtonProblem {
                 min_rl = min_rli;
         }
         if (min_rl < m_options.dHat)
-            std::cerr << "WARNING: The minimum edge rest length is smaller than the constraint barrier thickness. "
-                         "The simulations will continue, but the result might be non-physical due to spurious contact forces between neighboring edges. "
-                         "Consider increasing corss-section radius or using a coarser polyline. "
-                         "Increasing the minContactEdgeDist parameter would remove non-physical contact forces at the expense of topology preservation guarantees." << std::endl;
+            std::cerr << "WARNING: The minimum edge rest length is smaller than the constraint barrier thickness./n"
+                         "The simulations will continue, but the result might be non-physical due to spurious contact forces between neighboring edges./n"
+                         "Consider decreasing the cross-section radius or using a coarser polyline./n"
+                         "Increasing the minContactEdgeDist parameter would remove non-physical contact forces, too, but only at the expense of topology preservation guarantees./n" << std::endl;
     }
 
     virtual void setVars(const Eigen::VectorXd &vars) override {
