@@ -99,7 +99,7 @@ add_subdirectory(${THIRD_PARTY_DIR}/ElasticRods)
 ################################################################################
 # Elastic Knots Library
 ################################################################################
-add_library(ElasticKnots SlidingProblem.cc)
+add_library(ElasticKnots ContactProblem.cc)
 target_link_libraries(ElasticKnots ElasticRods tight_inclusion)
 target_link_libraries(ElasticKnots ipc::toolkit)
 set_target_properties(ElasticKnots PROPERTIES CXX_STANDARD 14)

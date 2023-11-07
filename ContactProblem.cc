@@ -1,7 +1,7 @@
-#include "SlidingProblem.hh"
+#include "ContactProblem.hh"
 
 
-std::pair<Real, size_t> SlidingProblem::feasibleStepLength(const Eigen::VectorXd &vars, const Eigen::VectorXd &step) const {
+std::pair<Real, size_t> ContactProblem::feasibleStepLength(const Eigen::VectorXd &vars, const Eigen::VectorXd &step) const {
     BENCHMARK_SCOPED_TIMER_SECTION timer("computeFeasibleStepSize");
     Real alpha = std::numeric_limits<Real>::max();
     size_t blocking_idx = std::numeric_limits<size_t>::max();
@@ -27,7 +27,7 @@ std::pair<Real, size_t> SlidingProblem::feasibleStepLength(const Eigen::VectorXd
     return std::make_pair(alpha, blocking_idx);
 }
 
-void SlidingProblem::m_iterationCallback(size_t i) {
+void ContactProblem::m_iterationCallback(size_t i) {
     m_rods.updateSourceFrame(); 
     m_rods.updateRotationParametrizations();
         
@@ -120,15 +120,15 @@ void spread_twist_preserving_link(PeriodicRod &pr, bool verbose) {
 
 ConvergenceReport compute_equilibrium(
     PeriodicRodList rods,
-    const SlidingProblemOptions &problemOptions,
+    const ContactProblemOptions &problemOptions,
     const NewtonOptimizerOptions &optimizerOptions, 
     std::vector<size_t> fixedVars, 
     const Eigen::VectorXd &externalForces,
-    const SlidingProblem::SoftConstraintsList &softConstraints,
+    const ContactProblem::SoftConstraintsList &softConstraints,
     CallbackFunction customCallback,
     Real hessianShift
     ) {
-    std::unique_ptr<SlidingProblem> problem = std::make_unique<SlidingProblem>(rods, problemOptions);
+    std::unique_ptr<ContactProblem> problem = std::make_unique<ContactProblem>(rods, problemOptions);
     problem->addFixedVariables(fixedVars);
     if (externalForces.size() > 0) {
         assert((size_t)externalForces.size() == rods.numDoF());

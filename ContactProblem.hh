@@ -15,7 +15,7 @@
 
 using CallbackFunction = std::function<void(NewtonProblem &, size_t)>;
 
-struct SlidingProblemOptions {  // TODO KNOTS: rename
+struct ContactProblemOptions {
     bool hasCollisions = true;               // Detect collision and prevent penetration
     bool printIterInfo = false;              // Print information at each iteration
     size_t minContactEdgeDist = 1;           // The minimum distance (in indices) for two edges to be included in the contact set. Note: values > 1 break guarantees of topology preservation.
@@ -25,12 +25,12 @@ struct SlidingProblemOptions {  // TODO KNOTS: rename
     Real dHat = 1e-7;                        // Distance at which the barrier eneregy is clamped to zero (repulsion only for distance < dHat, see [Li et al. 2020])
 };
 
-struct SlidingProblem : public NewtonProblem {
+struct ContactProblem : public NewtonProblem {
     using SoftConstraintsList = std::vector<std::shared_ptr<SoftConstraint>>;
 
-    SlidingProblem(
+    ContactProblem(
         PeriodicRodList &rods, 
-        SlidingProblemOptions options = SlidingProblemOptions()
+        ContactProblemOptions options = ContactProblemOptions()
         ) : m_rods(rods), m_options(options) {
 
         updateCachedVars();
@@ -70,10 +70,10 @@ struct SlidingProblem : public NewtonProblem {
                 min_rl = min_rli;
         }
         if (min_rl < m_options.dHat)
-            std::cerr << "WARNING: The minimum edge rest length is smaller than the constraint barrier thickness./n"
-                         "The simulations will continue, but the result might be non-physical due to spurious contact forces between neighboring edges./n"
-                         "Consider decreasing the cross-section radius or using a coarser polyline./n"
-                         "Increasing the minContactEdgeDist parameter would remove non-physical contact forces, too, but only at the expense of topology preservation guarantees./n" << std::endl;
+            std::cerr << "WARNING: The minimum edge rest length is smaller than the constraint barrier thickness.\n"
+                         "The simulations will continue, but the result might be non-physical due to spurious contact forces between neighboring edges.\n"
+                         "Consider decreasing the cross-section radius or using a coarser polyline.\n"
+                         "Increasing the minContactEdgeDist parameter would remove non-physical contact forces, too, but only at the expense of topology preservation guarantees.\n" << std::endl;
     }
 
     virtual void setVars(const Eigen::VectorXd &vars) override {
@@ -359,7 +359,7 @@ struct SlidingProblem : public NewtonProblem {
     PeriodicRodList &m_rods;
     Eigen::VectorXd m_cachedVars;    // [r1, ..., rn], where ri = [x1, y1, z1, ..., xk, yk, zk, th1, ..., thk-1].
     SoftConstraintsList m_softConstraints;
-    SlidingProblemOptions m_options;
+    ContactProblemOptions m_options;
 
     // ipc-toolkit
     ipc::Constraints m_constraintSet;
@@ -373,11 +373,11 @@ void spread_twist_preserving_link(PeriodicRod &pr, bool verbose = false);
 
 ConvergenceReport compute_equilibrium(
     PeriodicRodList rods,
-    const SlidingProblemOptions &problemOptions = SlidingProblemOptions(),
+    const ContactProblemOptions &problemOptions = ContactProblemOptions(),
     const NewtonOptimizerOptions &optimizerOptions = NewtonOptimizerOptions(), 
     std::vector<size_t> fixedVars = std::vector<size_t>(), 
     const Eigen::VectorXd &externalForces = Eigen::VectorXd(),
-    const SlidingProblem::SoftConstraintsList &softConstraints = SlidingProblem::SoftConstraintsList(),
+    const ContactProblem::SoftConstraintsList &softConstraints = ContactProblem::SoftConstraintsList(),
     CallbackFunction customCallback = nullptr,
     double hessianShift = 0.0
 );

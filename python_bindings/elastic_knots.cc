@@ -6,7 +6,7 @@
 #include <ElasticRods/ElasticRod.hh>
 #include <ElasticRods/python_bindings/visualization.hh>
 #include <MeshFEM/newton_optimizer/newton_optimizer.hh>
-#include "../SlidingProblem.hh"
+#include "../ContactProblem.hh"
 #include "../PeriodicRodList.hh"
 #include "../SoftConstraint.hh"
 
@@ -91,29 +91,29 @@ PYBIND11_MODULE(elastic_knots, m) {
     //                                  Problem
     // ----------------------------------------------------------------------------
 
-    py::class_<SlidingProblem, NewtonProblem>(m, "SlidingProblem")
-        .def(py::init<PeriodicRodList &, SlidingProblemOptions>(), 
+    py::class_<ContactProblem, NewtonProblem>(m, "ContactProblem")
+        .def(py::init<PeriodicRodList &, ContactProblemOptions>(), 
             py::arg("rods"), py::arg("problemOptions"))
-        .def("numRods",                   &SlidingProblem::numRods)
-        .def("numIPCConstraints",         &SlidingProblem::numIPCConstraints)
-        .def("getVars",                   &SlidingProblem::getVars)
-        .def("numVars",                   &SlidingProblem::numVars)
-        .def("getDoFs",                   &SlidingProblem::getVars)                    // alias
-        .def("setVars",                   &SlidingProblem::setVars, py::arg("vars"))
-        .def("setDoFs",                   &SlidingProblem::setVars, py::arg("vars"))   // alias
-        .def("addSoftConstraint",         &SlidingProblem::addSoftConstraint,  py::arg("softConstraint"))
-        .def("addSoftConstraints",        &SlidingProblem::addSoftConstraints, py::arg("softConstraints"))
-        .def("hasCollisions",             &SlidingProblem::hasCollisions)
-        .def("updateConstraintSet",       &SlidingProblem::updateConstraintSet)
-        .def("contactEnergy",            &SlidingProblem::contactEnergy)
-        .def("externalPotentialEnergy",   &SlidingProblem::externalPotentialEnergy)
-        .def("hessianSparsityPattern",    &SlidingProblem::hessianSparsityPattern)
-        .def("hessian",                   &SlidingProblem::hessian)
-        .def("contactForces",             &SlidingProblem::contactForces)
-        .def_readwrite("externalForces",  &SlidingProblem::external_forces)
-        .def_readwrite("options",         &SlidingProblem::m_options)
-        .def_readwrite("constraintSet",   &SlidingProblem::m_constraintSet)
-        .def_readwrite("collisionMesh",   &SlidingProblem::m_collisionMesh)
+        .def("numRods",                   &ContactProblem::numRods)
+        .def("numIPCConstraints",         &ContactProblem::numIPCConstraints)
+        .def("getVars",                   &ContactProblem::getVars)
+        .def("numVars",                   &ContactProblem::numVars)
+        .def("getDoFs",                   &ContactProblem::getVars)                    // alias
+        .def("setVars",                   &ContactProblem::setVars, py::arg("vars"))
+        .def("setDoFs",                   &ContactProblem::setVars, py::arg("vars"))   // alias
+        .def("addSoftConstraint",         &ContactProblem::addSoftConstraint,  py::arg("softConstraint"))
+        .def("addSoftConstraints",        &ContactProblem::addSoftConstraints, py::arg("softConstraints"))
+        .def("hasCollisions",             &ContactProblem::hasCollisions)
+        .def("updateConstraintSet",       &ContactProblem::updateConstraintSet)
+        .def("contactEnergy",             &ContactProblem::contactEnergy)
+        .def("externalPotentialEnergy",   &ContactProblem::externalPotentialEnergy)
+        .def("hessianSparsityPattern",    &ContactProblem::hessianSparsityPattern)
+        .def("hessian",                   &ContactProblem::hessian)
+        .def("contactForces",             &ContactProblem::contactForces)
+        .def_readwrite("externalForces",  &ContactProblem::external_forces)
+        .def_readwrite("options",         &ContactProblem::m_options)
+        .def_readwrite("constraintSet",   &ContactProblem::m_constraintSet)
+        .def_readwrite("collisionMesh",   &ContactProblem::m_collisionMesh)
     ;
 
     // ----------------------------------------------------------------------------
@@ -152,15 +152,15 @@ PYBIND11_MODULE(elastic_knots, m) {
     //                                  Options
     // ----------------------------------------------------------------------------
 
-    py::class_<SlidingProblemOptions>(m, "SlidingProblemOptions")
+    py::class_<ContactProblemOptions>(m, "ContactProblemOptions")
         .def(py::init<>())
-        .def_readwrite("hasCollisions",             &SlidingProblemOptions::hasCollisions)
-        .def_readwrite("printIterInfo",             &SlidingProblemOptions::printIterInfo)
-        .def_readwrite("minContactEdgeDist",        &SlidingProblemOptions::minContactEdgeDist)
-        .def_readwrite("Wang2021MaxIter",           &SlidingProblemOptions::Wang2021MaxIter)
-        .def_readwrite("projectContactHessianPSD",  &SlidingProblemOptions::projectContactHessianPSD)
-        .def_readwrite("contactStiffness",          &SlidingProblemOptions::contactStiffness)
-        .def_readwrite("dHat",                      &SlidingProblemOptions::dHat)
+        .def_readwrite("hasCollisions",             &ContactProblemOptions::hasCollisions)
+        .def_readwrite("printIterInfo",             &ContactProblemOptions::printIterInfo)
+        .def_readwrite("minContactEdgeDist",        &ContactProblemOptions::minContactEdgeDist)
+        .def_readwrite("Wang2021MaxIter",           &ContactProblemOptions::Wang2021MaxIter)
+        .def_readwrite("projectContactHessianPSD",  &ContactProblemOptions::projectContactHessianPSD)
+        .def_readwrite("contactStiffness",          &ContactProblemOptions::contactStiffness)
+        .def_readwrite("dHat",                      &ContactProblemOptions::dHat)
     ;
 
     // ----------------------------------------------------------------------------
@@ -190,11 +190,11 @@ PYBIND11_MODULE(elastic_knots, m) {
     m.def("compute_equilibrium",
         [](
             PeriodicRodList rods,
-            const SlidingProblemOptions &problemOptions, 
+            const ContactProblemOptions &problemOptions, 
             const NewtonOptimizerOptions &optimizerOptions, 
             const std::vector<size_t> &fixedVars,
             const Eigen::VectorXd &externalForces,
-            const SlidingProblem::SoftConstraintsList &softConstraints,
+            const ContactProblem::SoftConstraintsList &softConstraints,
             const PyCallbackFunction &pcb,
             double hessianShift
         ) {
@@ -204,11 +204,11 @@ PYBIND11_MODULE(elastic_knots, m) {
             return compute_equilibrium(rods, problemOptions, optimizerOptions, fixedVars, externalForces, softConstraints, cb, hessianShift);
         },
         py::arg("rods"),
-        py::arg("problemOptions") = SlidingProblemOptions(),
+        py::arg("problemOptions") = ContactProblemOptions(),
         py::arg("optimizerOptions") = NewtonOptimizerOptions(),
         py::arg("fixedVars") = std::vector<size_t>(),
         py::arg("externalForces") = Eigen::VectorXd(),
-        py::arg("softConstraints") = SlidingProblem::SoftConstraintsList(),
+        py::arg("softConstraints") = ContactProblem::SoftConstraintsList(),
         py::arg("callback") = nullptr,
         py::arg("hessianShift") = 0.0
     );
