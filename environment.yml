@@ -7,9 +7,12 @@ dependencies:
   - _openmp_mutex=5.1=1_gnu
   - asttokens=2.0.5=pyhd3eb1b0_0
   - backcall=0.2.0=pyhd3eb1b0_0
-  - ca-certificates=2023.7.22=hbcca054_0
+  - blas=1.0=openblas
+  - bottleneck=1.3.5=py39h7deecbd_0
+  - ca-certificates=2023.12.12=h06a4308_0
   - decorator=5.1.1=pyhd3eb1b0_0
   - executing=0.8.3=pyhd3eb1b0_0
+  - fftw=3.3.9=h27cfd23_1
   - ipython=8.12.2=py39h06a4308_0
   - jedi=0.18.1=py39h06a4308_1
   - joblib=1.3.2=pyhd8ed1ab_0
@@ -23,10 +26,13 @@ dependencies:
   - libgomp=11.2.0=h1234567_1
   - liblapack=3.9.0=15_linux64_openblas
   - libopenblas=0.3.20=pthreads_h78a6416_0
-  - libstdcxx-ng=11.2.0=h1234567_1
+  - libstdcxx-ng=13.2.0=h7e041cc_3
   - matplotlib-inline=0.1.6=py39h06a4308_0
   - ncurses=6.4=h6a678d5_0
-  - openssl=3.0.10=h7f8727e_2
+  - numexpr=2.8.4=py39hd2a5715_1
+  - numpy-base=1.22.3=py39hb8be1f0_0
+  - openssl=3.0.12=h7f8727e_0
+  - pandas=2.0.3=py39h1128e8f_0
   - parso=0.8.3=pyhd3eb1b0_0
   - pexpect=4.8.0=pyhd3eb1b0_3
   - pickleshare=0.7.5=pyhd3eb1b0_1003
@@ -36,7 +42,10 @@ dependencies:
   - pure_eval=0.2.2=pyhd3eb1b0_0
   - pygments=2.15.1=py39h06a4308_1
   - python=3.9.17=h955ad1f_0
+  - python-dateutil=2.8.2=pyhd3eb1b0_0
+  - python-tzdata=2023.3=pyhd3eb1b0_0
   - python_abi=3.9=2_cp39
+  - pytz=2023.3.post1=py39h06a4308_0
   - readline=8.2=h5eee18b_0
   - scikit-learn=1.0.2=py39h4dfa638_0
   - setuptools=68.0.0=py39h06a4308_0
@@ -69,7 +78,9 @@ dependencies:
     - entrypoints==0.4
     - exceptiongroup==1.1.3
     - fastjsonschema==2.18.0
+    - filelock==3.13.1
     - fonttools==4.42.1
+    - gdown==4.7.1
     - idna==3.4
     - importlib-metadata==6.8.0
     - importlib-resources==6.0.1
@@ -107,7 +118,7 @@ dependencies:
     - prometheus-client==0.17.1
     - pycparser==2.21
     - pyparsing==3.0.9
-    - python-dateutil==2.8.2
+    - pysocks==1.7.1
     - pythreejs==2.3.0
     - pyzmq==24.0.1
     - referencing==0.30.2
@@ -120,6 +131,7 @@ dependencies:
     - terminado==0.17.1
     - tinycss2==1.2.1
     - tornado==6.3.3
+    - tqdm==4.66.1
     - traittypes==0.2.1
     - urllib3==2.0.4
     - webencodings==0.5.1
