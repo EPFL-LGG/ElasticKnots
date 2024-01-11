@@ -30,8 +30,13 @@ conda activate ElasticKnots
 ```
 
 ## Building
-Build the C++ code and its Python bindings using cmake and your favorite build system. For example, with `ninja`:
+Build the C++ code and its Python bindings:
 
+```
+python setup.py
+```
+
+Alternatively, you can manually build the project using cmake and your favorite build system. For example, with `ninja`:
 ```
 cd ElasticKnots
 mkdir build && cd build
