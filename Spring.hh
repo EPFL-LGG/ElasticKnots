@@ -3,6 +3,8 @@
 #include <ElasticRods/PeriodicRod.hh>
 #include "helper.hh"
 
+
+
 template <typename Real_>
 struct  Spring_T {
     
@@ -13,13 +15,20 @@ struct  Spring_T {
     using Mat3_T = Eigen::Matrix<Real_, 3, 3>;
     using MatX_T = Eigen::Matrix<Real_, -1, -1>;
 
+    enum class CompressionType {
+        Compression,
+        NoCompression
+    };
+
     std::vector<Vec3_T> positions;
     double stiffness;
     double rest_length;
     double min_segment_length = 1e-3;
     double regularization_weight;
+    CompressionType compression_type;
+    Real compression_tolerance;
 
-    Spring_T(std::vector<Vec3_T> &p, double s, double l = 0) : positions(p), stiffness(s), rest_length(l), regularization_weight(1e-5) {}
+    Spring_T(std::vector<Vec3_T> &p, double s, double l = 0, CompressionType c = CompressionType::Compression, Real tol = 1e-3) : positions(p), stiffness(s), rest_length(l), regularization_weight(1e-5), compression_type(c), compression_tolerance(tol) {}
 
     // Copy constructor converting from another floating point type (e.g., double to autodiff)
     template<typename Real_2>
@@ -54,6 +63,8 @@ struct  Spring_T {
         min_segment_length = sp.min_segment_length;
         regularization_weight = sp.regularization_weight;
         castStdADVector(sp.positions,positions);
+        compression_type = sp.compression_type;
+        compression_tolerance = sp.compression_tolerance;
     }
 
     Real_ energy() const;
@@ -78,6 +89,10 @@ struct  Spring_T {
     VecX_T regularization_gradient() const;
     MatX_T regularization_hessian() const;
     MatX_T regularization_hessian_helper(size_t i) const;
+
+    Real_ Q(Real_ x) const;
+    Real_ dQ_dx(Real_ x) const;
+    Real_ d2Q_dx2(Real_ x) const;
     
     size_t get_num_points() const {return positions.size();}
     Vec3_T get_point_coords(size_t i) const {return positions[i];}
@@ -88,6 +103,7 @@ struct  Spring_T {
     Real_ get_total_length() const;
     void set_coords(std::vector<Vec3_T> &c){positions = c;}
     void set_stiffness(double s){stiffness = s;}
+    bool is_compressed() {return get_total_length() < rest_length;}
 
 };
 

@@ -9,6 +9,7 @@
 #include "../ContactProblem.hh"
 #include "../PeriodicRodList.hh"
 #include "../SoftConstraint.hh"
+#include "../OneSidedQuadratic.hh"
 #include "../Spring.hh"
 #include "../Spring.cc"
 #include "../ContactTencer.hh"
@@ -33,7 +34,9 @@ CallbackFunction callbackWrapper(const PyCallbackFunction &pcb) {
 }
 using EnergyType = typename ElasticRod::EnergyType;
 using TencerEnergyType = typename ContactTencer::TencerEnergyType;
+using OneSidedQuadratic = OneSidedQuadratic_T<Real>;
 using Spring = Spring_T<Real>;
+using CompressionType = typename Spring::CompressionType;
 using Vec3 = Eigen::Matrix<double, 3, 1>;
 
 PYBIND11_MODULE(elastic_knots, m) {
@@ -96,11 +99,31 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("visualizationField", [](const PeriodicRodList &r, const std::vector<Eigen::MatrixX3d> &f) { return getVisualizationField(r, f); }, "Convert a per-vertex or per-edge field into a per-visualization-geometry field (called internally by MeshFEM visualization)", py::arg("perEntityField"))
     ;
 
+
+    using PyOSQ = py::class_<OneSidedQuadratic, std::shared_ptr<OneSidedQuadratic>>;
+    auto osq = PyOSQ(m,"OneSidedQuadratic");
+
+    osq
+        .def(py::init<Real,Real>(), py::arg("k"),py::arg("eps"))
+        .def("q", &OneSidedQuadratic::q)
+        .def("dq_dx", &OneSidedQuadratic::dq_dx)
+        .def("d2q_dx2", &OneSidedQuadratic::d2q_dx2)
+        .def("get_k", &OneSidedQuadratic::get_k)
+        .def("set_k", &OneSidedQuadratic::set_k)
+        .def("get_eps", &OneSidedQuadratic::get_eps)
+        .def("set_eps", &OneSidedQuadratic::set_eps)
+    ;   
+
+    py::enum_<CompressionType>(m, "CompressionType")
+        .value("Compression", CompressionType::Compression)
+        .value("NoCompression", CompressionType::NoCompression)
+    ;
+
     using PySp = py::class_<Spring, std::shared_ptr<Spring>>;
     auto spring = PySp(m,"Spring");
 
     spring
-        .def(py::init<std::vector<Vec3> &, double, double>(), py::arg("positions"),py::arg("stiffness"),py::arg("rest_length"))
+        .def(py::init<std::vector<Vec3> &, double, double, CompressionType, Real>(), py::arg("positions"),py::arg("stiffness"),py::arg("rest_length"),py::arg("compression_type") = CompressionType::Compression, py::arg("tol") = 1e-3)
         .def("energy", &Spring::energy)
         .def("dE_dx", &Spring::dE_dx)
         .def("dE_dk", &Spring::dE_dk)
@@ -117,6 +140,8 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("regularizationEnergy", &Spring::regularization_energy)
         .def("regularizationGradient", &Spring::regularization_gradient)
         .def("regularizationHessian", &Spring::regularization_hessian)
+        .def("isCompressed", &Spring::is_compressed)
+        .def("getTotalLength", &Spring::get_total_length)
     ;
 
     py::enum_<TencerEnergyType>(m, "TencerEnergyType")

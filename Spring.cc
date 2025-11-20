@@ -12,7 +12,10 @@ Real_ Spring_T<Real_>::get_total_length() const{
 template <typename Real_>
 Real_ Spring_T<Real_>::energy() const{
     Real_ l = get_total_length() - rest_length;
-    return 0.5 * stiffness * l * l + min_length_energy() + regularization_energy();
+    Real_ ql;
+    if (compression_type == CompressionType::Compression)  ql = l * l;
+    else  ql = Q(l);
+    return 0.5 * stiffness * ql + min_length_energy() + regularization_energy();
 }
 
 
@@ -28,8 +31,11 @@ Eigen::Matrix<Real_, Eigen::Dynamic, 1> Spring_T<Real_>::dE_dx() const{
     size_t n = positions.size();
     VecX_T res = VecX_T::Zero(3 * n);
     Real_ l = get_total_length() - rest_length;
+    Real_ dq_dl;
+    if (compression_type == CompressionType::Compression) dq_dl = 2 * l;
+    else dq_dl = dQ_dx(l);
     for (size_t i = 0; i < n; ++i){
-        res.segment(3*i,3) = stiffness * l * dterm(i);
+        res.segment(3*i,3) = 0.5 * stiffness * dq_dl * dterm(i);
     }
     return res + min_length_gradient() + regularization_gradient();
 }
@@ -221,13 +227,19 @@ Eigen::Matrix<Real_, -1, -1> Spring_T<Real_>::d2E_dx2()  const{
     int n = positions.size();
     MatX_T res = MatX_T::Zero(3*n,3*n);
     Real_ L = get_total_length() - rest_length;
+    Real_ dq_dl;
+    if (compression_type == CompressionType::Compression) dq_dl = 2 * L;
+    else dq_dl = dQ_dx(L);
+    Real_ d2q_dl2;
+    if (compression_type == CompressionType::Compression) d2q_dl2 = 2;
+    else d2q_dl2 = d2Q_dx2(L);
     for (int i = 0; i < n; ++i){
         Vec3_T di = dterm(i);
         for (int j = 0; j < i-1; ++j){
             Vec3_T dj = dterm(j);
             for (int k = 0; k < 3; ++k){
                 for (int l = 0; l < 3; ++l){
-                    res(3*i+k,3*j+l) = stiffness * di[k] * dj[l];
+                    res(3*i+k,3*j+l) = 0.5 * stiffness * d2q_dl2 * di[k] * dj[l];
                 }
             }
         }
@@ -235,7 +247,7 @@ Eigen::Matrix<Real_, -1, -1> Spring_T<Real_>::d2E_dx2()  const{
             Vec3_T dj = dterm(j);
             for (int k = 0; k < 3; ++k){
                 for (int l = 0; l < 3; ++l){
-                    res(3*i+k,3*j+l) = stiffness * di[k] * dj[l];
+                    res(3*i+k,3*j+l) = 0.5 * stiffness * d2q_dl2 * di[k] * dj[l];
                 }
             }
         }
@@ -244,7 +256,7 @@ Eigen::Matrix<Real_, -1, -1> Spring_T<Real_>::d2E_dx2()  const{
         Mat3_T d2i1 = d2term(i+1);
         for (int k = 0; k < 3; ++k){
             for (int l = 0; l < 3; ++l){
-                res(3*i+k,3*i+l) = stiffness * di[k] * di[l] + stiffness * L * (d2i(k,l) + d2i1(k,l));
+                res(3*i+k,3*i+l) = 0.5 * stiffness * d2q_dl2 * di[k] * di[l] + 0.5 * stiffness * dq_dl * (d2i(k,l) + d2i1(k,l));
             }
         }
         // case j = i-1
@@ -252,7 +264,7 @@ Eigen::Matrix<Real_, -1, -1> Spring_T<Real_>::d2E_dx2()  const{
             Vec3_T dim1 = dterm(i-1);
             for (int k = 0; k < 3; ++k){
                 for (int l = 0; l < 3; ++l){
-                    res(3*i+k,3*i-3+l) = stiffness * di[k] * dim1[l] - stiffness * L * d2i(k,l);
+                    res(3*i+k,3*i-3+l) = 0.5 * stiffness * d2q_dl2 * di[k] * dim1[l] - 0.5 * stiffness * dq_dl * d2i(k,l);
                 }
             }
         }
@@ -261,7 +273,7 @@ Eigen::Matrix<Real_, -1, -1> Spring_T<Real_>::d2E_dx2()  const{
             Vec3_T di1 = dterm(i+1);
             for (int k = 0; k < 3; ++k){
                 for (int l = 0; l < 3; ++l){
-                    res(3*i+k,3*i+3+l) = stiffness * di[k] * di1[l] - stiffness * L * d2i1(k,l);
+                    res(3*i+k,3*i+3+l) = 0.5 * stiffness * d2q_dl2 * di[k] * di1[l] - 0.5 * stiffness * dq_dl * d2i1(k,l);
                 }
             }
         }
@@ -288,6 +300,33 @@ Eigen::Matrix<Real_, -1, 1> Spring_T<Real_>::dE_dxk()  const{
     res.head(3*n) = dE_dx();
     res[3*n] = dE_dk();
     return res;
+}
+
+template <typename Real_>
+Real_ Spring_T<Real_>::Q(Real_ x) const{
+    if (x < -compression_tolerance) return 0;
+    if (x < compression_tolerance){
+        return x*x*x/(6*compression_tolerance) + x*x/2 + compression_tolerance*x/2 + compression_tolerance*compression_tolerance/6;
+    }
+    return x*x + compression_tolerance*compression_tolerance/3;
+}
+
+template <typename Real_>
+Real_ Spring_T<Real_>::dQ_dx(Real_ x) const{
+    if (x < -compression_tolerance) return 0;
+    if (x < compression_tolerance){
+        return x*x/(2*compression_tolerance) + x + compression_tolerance/2;
+    }
+    return 2*x;
+}
+
+template <typename Real_>
+Real_ Spring_T<Real_>::d2Q_dx2(Real_ x) const{
+    if (x < -compression_tolerance) return 0;
+    if (x < compression_tolerance){
+        return x/compression_tolerance + 1;
+    }
+    return 2;
 }
 
 template struct Spring_T<Real>;
