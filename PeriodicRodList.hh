@@ -9,6 +9,8 @@ using Pt3 = Pt3_T<Real>;
 struct PeriodicRodList {
     using EnergyType = typename PeriodicRod::EnergyType;
 
+    PeriodicRodList(){}
+
     PeriodicRodList(PeriodicRod &rod) {
         m_rods.push_back(std::make_shared<PeriodicRod>(rod));
         initializeCounters();
@@ -20,6 +22,25 @@ struct PeriodicRodList {
         assert(rodsHaveCircularCrossSection());
         assert(rodsHaveSameRadius());
         initializeCounters();
+    }
+
+    PeriodicRodList(const PeriodicRodList &pr){
+        for (int i = 0; i < pr.numRods(); ++i){
+            PeriodicRod r = PeriodicRod(*(pr.getRod(i)));
+            // PeriodicRod r = *(pr.getRod(i));
+            m_rods.push_back(std::make_shared<PeriodicRod>(r));
+        }
+        initializeCounters();
+    }
+
+    PeriodicRodList& operator=(const PeriodicRodList &pr) { 
+        for (int i = 0; i < pr.numRods(); ++i){
+            PeriodicRod r = PeriodicRod(*(pr.getRod(i)));
+            // PeriodicRod r = *(pr.getRod(i));
+            m_rods.push_back(std::make_shared<PeriodicRod>(r));
+        }
+        initializeCounters();
+        return *this;
     }
 
     bool rodsHaveCircularCrossSection() const {
@@ -171,11 +192,11 @@ struct PeriodicRodList {
         }
     }
 
-    SuiteSparseMatrix hessianSparsityPattern() const {
+    SuiteSparseMatrix hessianSparsityPattern(Real val = 0.0) const {
         SuiteSparseMatrix result(numDoF(), numDoF());
         size_t gi = 0;  // global index
         for (const auto &r : m_rods) {
-            SuiteSparseMatrix rodSparsity = r->hessianSparsityPattern();
+            SuiteSparseMatrix rodSparsity = r->hessianSparsityPattern(val);
             extendSparseMatrixSouthEast(rodSparsity, numDoF() - gi);
             result.addWithDistinctSparsityPattern(rodSparsity, 1.0, gi, 0, std::numeric_limits<int>::max());
             gi += r->numDoF();

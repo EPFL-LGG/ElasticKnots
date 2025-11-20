@@ -9,6 +9,12 @@
 #include "../ContactProblem.hh"
 #include "../PeriodicRodList.hh"
 #include "../SoftConstraint.hh"
+#include "../Spring.hh"
+#include "../Spring.cc"
+#include "../ContactTencer.hh"
+#include "../ContactTencer.cc"
+#include "../ContactProblemTencer.hh"
+#include "../ContactProblemTencer.cc"
 
 #include <MeshFEM/GlobalBenchmark.hh>
 #include <pybind11/pybind11.h>
@@ -26,6 +32,9 @@ CallbackFunction callbackWrapper(const PyCallbackFunction &pcb) {
         return [pcb](NewtonProblem &p, size_t i) -> void { if (pcb) pcb(&p, i); };
 }
 using EnergyType = typename ElasticRod::EnergyType;
+using TencerEnergyType = typename ContactTencer::TencerEnergyType;
+using Spring = Spring_T<Real>;
+using Vec3 = Eigen::Matrix<double, 3, 1>;
 
 PYBIND11_MODULE(elastic_knots, m) {
     m.doc() = "Elastic Knots Codebase";
@@ -87,6 +96,60 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("visualizationField", [](const PeriodicRodList &r, const std::vector<Eigen::MatrixX3d> &f) { return getVisualizationField(r, f); }, "Convert a per-vertex or per-edge field into a per-visualization-geometry field (called internally by MeshFEM visualization)", py::arg("perEntityField"))
     ;
 
+    using PySp = py::class_<Spring, std::shared_ptr<Spring>>;
+    auto spring = PySp(m,"Spring");
+
+    spring
+        .def(py::init<std::vector<Vec3> &, double, double>(), py::arg("positions"),py::arg("stiffness"),py::arg("rest_length"))
+        .def("energy", &Spring::energy)
+        .def("dE_dx", &Spring::dE_dx)
+        .def("dE_dk", &Spring::dE_dk)
+        .def("dE_dxk", &Spring::dE_dxk)
+        .def("d2E_dx2", &Spring::d2E_dx2)
+        .def("d2E_dxdk", &Spring::d2E_dxdk)
+        .def("getCoords", &Spring::get_coords)
+        .def("getStiffness", &Spring::get_stiffness)
+        .def("getRegularizationWeight", &Spring::get_regularization_weight)
+        .def("setCoords", &Spring::set_coords, py::arg("coords"))
+        .def("setStiffness", &Spring::set_stiffness, py::arg("stiffness"))
+        .def("getNumPoints", &Spring::get_num_points)
+        .def("getRestLength", &Spring::get_rest_length)
+        .def("regularizationEnergy", &Spring::regularization_energy)
+        .def("regularizationGradient", &Spring::regularization_gradient)
+        .def("regularizationHessian", &Spring::regularization_hessian)
+    ;
+
+    py::enum_<TencerEnergyType>(m, "TencerEnergyType")
+        .value("Full", TencerEnergyType::Full)
+        .value("Elastic", TencerEnergyType::Elastic)
+        .value("Springs", TencerEnergyType::Springs)
+    ;
+
+    py::class_<SpringAttachments, std::shared_ptr<SpringAttachments>>(m, "SpringAttachments")
+        .def(py::init<Eigen::Matrix<int, Eigen::Dynamic, 1>,Eigen::Matrix<int, Eigen::Dynamic, 1>,Eigen::Matrix<int, Eigen::Dynamic, 1>>(), py::arg("rodIdx"),py::arg("rod_vertices"),py::arg("spring_vertices"))
+        .def_readonly("rodIdx", &SpringAttachments::rod_idx, py::return_value_policy::reference)
+        .def_readonly("rod_vertices", &SpringAttachments::rod_vertices, py::return_value_policy::reference)
+        .def_readonly("spring_vertices", &SpringAttachments::spring_vertices, py::return_value_policy::reference)
+    ;
+
+    py::class_<ContactTencer, std::shared_ptr<ContactTencer>>(m, "ContactTencer")
+        .def(py::init<const std::vector<PeriodicRod> &, std::vector<Spring> &, std::vector<SpringAttachments> &>(), py::arg("closed_rods"),py::arg("springs"),py::arg("spring_attachments"))
+        .def(py::init<const ContactTencer &>(), py::arg("tencer"))
+        // rod and spring accessors
+        .def("getClosedRods", &ContactTencer::get_closed_rods)
+        .def("getSprings", &ContactTencer::get_springs)
+        .def("getAttachmentVertices", &ContactTencer::get_attachment_vertices)
+        // variable accessors
+        .def("numDefoVars", &ContactTencer::numDefoVars)
+        .def("getDefoVars", &ContactTencer::getDefoVars)
+        .def("setDefoVars", &ContactTencer::setDefoVars, py::arg("new_defo_vars"))
+        // energy and gradients
+        .def("energy", py::overload_cast<TencerEnergyType,EnergyType> (&ContactTencer::energy, py::const_), py::arg("robotEnergyType")=TencerEnergyType::Full, py::arg("energyType")=EnergyType::Full)
+        .def("gradient", py::overload_cast<TencerEnergyType, bool>(&ContactTencer::gradient,  py::const_), py::arg("robotEnergyType")=TencerEnergyType::Full,py::arg("updateParam") = false)
+        .def("hessian", &ContactTencer::get_hessian, py::arg("robotEnergyType") = TencerEnergyType::Full, py::arg("energyType") = EnergyType::Full)
+    ;
+
+
     // ----------------------------------------------------------------------------
     //                                  Problem
     // ----------------------------------------------------------------------------
@@ -114,6 +177,23 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def_readwrite("options",         &ContactProblem::m_options)
         .def_readwrite("constraintSet",   &ContactProblem::m_constraintSet)
         .def_readwrite("collisionMesh",   &ContactProblem::m_collisionMesh)
+    ;
+
+    py::class_<ContactProblemTencer, NewtonProblem>(m, "ContactProblemTencer")
+        .def(py::init<ContactTencer &, ContactProblemOptions>(), 
+            py::arg("tencer"), py::arg("problemOptions"))
+        .def("getTencerCopy", &ContactProblemTencer::get_tencer_copy)
+        .def_readwrite("collisionMesh",   &ContactProblemTencer::m_collisionMesh)
+        .def("getVars",                   &ContactProblemTencer::getVars)
+        .def("numVars",                   &ContactProblemTencer::numVars)
+        .def("setVars",                   &ContactProblemTencer::setVars, py::arg("vars"))
+        .def("contactEnergy",             &ContactProblemTencer::contactEnergy)
+        .def("energy",                    &ContactProblemTencer::energy)
+        .def("contactForces",             &ContactProblemTencer::contactForces)
+        .def("gradient",                  &ContactProblemTencer::gradient)
+        .def("hessian",                   &ContactProblemTencer::hessian)
+        .def("printConstraintSet",        &ContactProblemTencer::print_constraint_set)
+
     ;
 
     // ----------------------------------------------------------------------------
@@ -189,7 +269,7 @@ PYBIND11_MODULE(elastic_knots, m) {
 
     m.def("compute_equilibrium",
         [](
-            PeriodicRodList rods,
+            PeriodicRodList& rods,
             const ContactProblemOptions &problemOptions, 
             const NewtonOptimizerOptions &optimizerOptions, 
             const std::vector<size_t> &fixedVars,
@@ -209,6 +289,30 @@ PYBIND11_MODULE(elastic_knots, m) {
         py::arg("fixedVars") = std::vector<size_t>(),
         py::arg("externalForces") = Eigen::VectorXd(),
         py::arg("softConstraints") = ContactProblem::SoftConstraintsList(),
+        py::arg("callback") = nullptr,
+        py::arg("hessianShift") = 0.0
+    );
+
+    m.def("compute_equilibrium",
+        [](
+            ContactTencer& tencer,
+            const ContactProblemOptions &problemOptions, 
+            const NewtonOptimizerOptions &optimizerOptions, 
+            const std::vector<size_t> &fixedVars,
+            const Eigen::VectorXd &externalForces,
+            const PyCallbackFunction &pcb,
+            double hessianShift
+        ) {
+            py::scoped_ostream_redirect stream1(std::cout, py::module::import("sys").attr("stdout"));
+            py::scoped_ostream_redirect stream2(std::cerr, py::module::import("sys").attr("stderr"));
+            auto cb = callbackWrapper(pcb);
+            return compute_equilibrium(tencer, problemOptions, optimizerOptions, fixedVars, externalForces, cb, hessianShift);
+        },
+        py::arg("tencer"),
+        py::arg("problemOptions") = ContactProblemOptions(),
+        py::arg("optimizerOptions") = NewtonOptimizerOptions(),
+        py::arg("fixedVars") = std::vector<size_t>(),
+        py::arg("externalForces") = Eigen::VectorXd(),
         py::arg("callback") = nullptr,
         py::arg("hessianShift") = 0.0
     );

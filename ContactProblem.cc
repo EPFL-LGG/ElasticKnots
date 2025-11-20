@@ -119,7 +119,7 @@ void spread_twist_preserving_link(PeriodicRod &pr, bool verbose) {
 }
 
 ConvergenceReport compute_equilibrium(
-    PeriodicRodList rods,
+    PeriodicRodList& rods,
     const ContactProblemOptions &problemOptions,
     const NewtonOptimizerOptions &optimizerOptions, 
     std::vector<size_t> fixedVars, 

@@ -1,11 +1,12 @@
 
-#ifndef SLIDING_PROBLEM_HH
-#define SLIDING_PROBLEM_HH
+#ifndef CONTACT_PROBLEM_TENCER_HH
+#define CONTACT_PROBLEM_TENCER_HH
 
 #include <utility>
 #include <algorithm>
 #include <Eigen/Core>
-#include "PeriodicRodList.hh"
+#include "ContactTencer.hh"
+#include "ContactProblem.hh"
 #include "SoftConstraint.hh"
 #include <tight_inclusion/ccd.hpp>
 #include <ipc/ipc.hpp>
@@ -15,47 +16,81 @@
 
 using CallbackFunction = std::function<void(NewtonProblem &, size_t)>;
 
-struct ContactProblemOptions {
-    bool hasCollisions = true;               // Detect collision and prevent penetration
-    bool printIterInfo = false;              // Print information at each iteration
-    size_t minContactEdgeDist = 1;           // The minimum distance (in indices) for two edges to be included in the contact set. Note: values > 1 break guarantees of topology preservation.
-    size_t Wang2021MaxIter = 1e6;            // Maximum number of iterations for Tight-Inclusion CCD [Wang et al. 2021]
-    bool projectContactHessianPSD = false;   // Project each individual contacts' Hessian to make them positive semi-definite before assembling the problem Hessian
-    Real contactStiffness = 1.0;             // Relative stiffness of the contact constraints
-    Real dHat = 1e-7;                        // Distance at which the barrier eneregy is clamped to zero (repulsion only for distance < dHat, see [Li et al. 2020])
-};
 
-struct ContactProblem : public NewtonProblem {
+struct ContactProblemTencer : public NewtonProblem {
     using SoftConstraintsList = std::vector<std::shared_ptr<SoftConstraint>>;
 
-    ContactProblem(
-        PeriodicRodList &rods, 
+    ContactProblemTencer(
+        ContactTencer &tencer, 
         ContactProblemOptions options = ContactProblemOptions()
-        ) : m_rods(rods), m_options(options) {
+        ) : m_tencer(tencer), m_options(options) {
 
         updateCachedVars();
         updateCachedSparsityPattern();
         updateCharacteristicLength();
 
-        rods.updateSourceFrame();
+        m_tencer.updateSourceFrame();
 
+        // TODO : add spring collisions
         if (m_options.hasCollisions) {
             // Initialize CollisionMesh with the connectivity information required by IPC
-            Eigen::MatrixXd vertices(m_rods.numVertices(), 3);
-            Eigen::MatrixXi edges(m_rods.numEdges(), 2);
+            Eigen::MatrixXd vertices(m_tencer.numVertices() + m_tencer.num_spring_free_vertices(), 3);
+            Eigen::MatrixXi edges(m_tencer.numEdges() + m_tencer.num_spring_edges(), 2);
             Eigen::MatrixXi faces(0, 3);  // no faces
-            for (size_t ri = 0; ri < m_rods.size(); ri++) {
-                const size_t fni = m_rods.firstGlobalNodeIndexInRod(ri);
-                const size_t nvr = m_rods.numVerticesInRod(ri);
+            for (size_t ri = 0; ri < m_tencer.closed_rods.size(); ri++) {
+                const size_t fni = m_tencer.closed_rods.firstGlobalNodeIndexInRod(ri);
+                const size_t nvr = m_tencer.closed_rods.numVerticesInRod(ri);
                 for (size_t i = 0; i < nvr; i++) {
                     size_t ni = fni + i;
-                    vertices.row(ni) = m_rods.getNode(ni);
+                    vertices.row(ni) = m_tencer.closed_rods.getNode(ni);
                     edges(ni, 0) = ni;
                     edges(ni, 1) = ni + 1;
                 }
                 edges(fni + nvr - 1, 1) = fni;  // overwrite second node in last edge
             }
+            size_t vertex_idx = m_tencer.numVertices();
+            size_t edge_idx = m_tencer.numEdges();
+            auto av = m_tencer.get_attachment_vertices();
+            size_t current_spring_vertex_idx = 0;
+            size_t prev_spring_vertex_idx = 0;
+            for (size_t si = 0; si < m_tencer.num_springs(); ++si){
+                int attachment_idx = 0;
+                for (size_t j = 0; j < m_tencer.springs[si].get_num_points(); ++j){
+                    if (av[si].spring_vertices[attachment_idx] == j){
+                        current_spring_vertex_idx = m_tencer.closed_rods.firstGlobalNodeIndexInRod(av[si].rod_idx[attachment_idx]) + av[si].rod_vertices[attachment_idx];
+                        attachment_idx ++;
+                    }
+                    else{
+                        current_spring_vertex_idx = vertex_idx;
+                        vertices.row(vertex_idx) = m_tencer.springs[si].positions[j];
+                        vertex_idx ++;
+                    }
+                    if (j > 0){
+                        edges(edge_idx, 0) = prev_spring_vertex_idx;
+                        edges(edge_idx, 1) = current_spring_vertex_idx;
+                        edge_idx ++;
+                    }
+                    prev_spring_vertex_idx = current_spring_vertex_idx;
+                }
+            }
             m_collisionMesh = ipc::CollisionMesh(vertices, edges, faces);
+
+            // // debug 
+            // std::cout << "vertices" << std::endl;
+            // for (size_t i = 0; i < m_tencer.numVertices() + m_tencer.num_spring_free_vertices(); ++i){
+            //     for (int j = 0; j < 3; ++j){
+            //         std::cout << vertices(i,j) << " " ;
+            //     }
+            //     std::cout << std::endl;
+            // }
+            // std::cout << "edges" << std::endl;
+            // for (size_t i = 0; i < m_tencer.numEdges() + m_tencer.num_spring_edges(); ++i){
+            //     for (int j = 0; j < 2; ++j){
+            //         std::cout << edges(i,j) << " " ;
+            //     }
+            //     std::cout << std::endl;
+            // }
+            // m_tencer.print_neighbors(m_options.minContactEdgeDist);
 
             updateConstraintSet();
             updateCachedSparsityPattern();
@@ -63,8 +98,8 @@ struct ContactProblem : public NewtonProblem {
 
         // Compute minimium edge rest length and check its compatibility with the constraint barrier thickness
         Real min_rl = std::numeric_limits<Real>::infinity();
-        for (size_t ri = 0; ri < m_rods.size(); ri++) {
-            const std::vector<Real> rli = m_rods[ri]->restLengths();
+        for (size_t ri = 0; ri < m_tencer.closed_rods.size(); ri++) {
+            const std::vector<Real> rli = m_tencer.closed_rods[ri]->restLengths();
             Real min_rli = *std::min_element(rli.begin(), rli.end());
             if (min_rli < min_rl)
                 min_rl = min_rli;
@@ -76,60 +111,56 @@ struct ContactProblem : public NewtonProblem {
                          "Increasing the minContactEdgeDist parameter would remove non-physical contact forces, too, but only at the expense of topology preservation guarantees.\n" << std::endl;
     }
 
+    ContactTencer get_tencer_copy() {return ContactTencer(m_tencer);}
     virtual void setVars(const Eigen::VectorXd &vars) override {
-        m_rods.setDoFs(vars.head(numVars()));
+        m_tencer.setDefoVars(vars.head(numVars()));
         if (m_options.hasCollisions)
             updateConstraintSet();
         m_cachedVars = vars;
     }
     virtual const Eigen::VectorXd getVars() const override { return m_cachedVars; }
-    virtual size_t numVars() const override { return m_rods.numDoF(); }
-    size_t numRods() const { return m_rods.size(); }
+    virtual size_t numVars() const override { return m_tencer.numDefoVars(); }
+    size_t numRods() const { return m_tencer.closed_rods.size(); }
     size_t numIPCConstraints() const { return m_constraintSet.size(); }
     
     virtual bool hasCollisions() const { return m_options.hasCollisions; };
 
-    void addSoftConstraint(const std::shared_ptr<SoftConstraint> &sc) { m_softConstraints.push_back(sc); }
-    void addSoftConstraints(const std::vector<std::shared_ptr<SoftConstraint>> &scList) { for (auto &sc : scList) m_softConstraints.push_back(sc); }
-
     virtual Real energy() const override { 
-        Real e = m_rods.energy();
+        Real e = m_tencer.energy();
         e += contactEnergy();
         e += externalPotentialEnergy();
-        for (auto &sc : m_softConstraints)
-            sc->energy(m_rods, e);
         return e;
     }
 
     virtual Eigen::VectorXd gradient(bool freshIterate = false) const override {
         Eigen::VectorXd result = Eigen::VectorXd::Zero(numVars());
-        result.head(numVars()) = m_rods.gradient(freshIterate);        // rods
+        result.head(numVars()) = m_tencer.gradient(freshIterate);        // rods
         if (m_options.hasCollisions) {
-            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
-            for (size_t ri = 0; ri < m_rods.size(); ri++)
-                result.segment(m_rods.firstGlobalDofIndexInRod(ri), 3*m_rods.numVerticesInRod(ri)) += bpGrad.segment(3*m_rods.firstGlobalNodeIndexInRod(ri), 3*m_rods.numVerticesInRod(ri));
+            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            for (size_t ri = 0; ri < m_tencer.closed_rods.size(); ri++)
+                result.segment(m_tencer.firstGlobalDofIndexInRod(ri), 3*m_tencer.numVerticesInRod(ri)) += bpGrad.segment(3*m_tencer.firstGlobalNodeIndexInRod(ri), 3*m_tencer.numVerticesInRod(ri));
+            result.tail(m_tencer.num_spring_free_vertices()*3) += bpGrad.tail(m_tencer.num_spring_free_vertices()*3);
         }
         if (external_forces.size() > 0) {                              // external potential energy
             assert((size_t)external_forces.size() == numVars());
             result.head(numVars()) -= external_forces;
         }
-        for (auto &sc : m_softConstraints)                             // soft constraints
-            sc->gradient(m_rods, result);
         return result;
     }
 
     Real contactEnergy() const {
         Real energy = 0;
         if (m_options.hasCollisions)
-            energy = m_options.contactStiffness * compute_barrier_potential(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            energy = m_options.contactStiffness * compute_barrier_potential(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
         return energy;
     }
 
     Eigen::MatrixXd contactForces() const {
-        Eigen::MatrixXd result = Eigen::MatrixXd::Zero(m_rods.numVertices(), 3);
+        size_t n = m_tencer.numVertices() + m_tencer.num_spring_free_vertices();
+        Eigen::MatrixXd result = Eigen::MatrixXd::Zero(n, 3);
         if (m_options.hasCollisions) {
-            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
-            for (size_t i = 0; i < m_rods.numEdges(); i++)
+            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            for (size_t i = 0; i < n; i++)
                 result.row(i) = - bpGrad.segment(3*i, 3);
         }
         return result;
@@ -137,7 +168,7 @@ struct ContactProblem : public NewtonProblem {
 
     Real externalPotentialEnergy() const {
         if (external_forces.size() == 0) return 0.0;
-        auto x = m_rods.getDoFs();
+        auto x = m_tencer.getDefoVars();
         if (external_forces.size() != x.size()) throw std::runtime_error("Invalid external force vector");
         return -external_forces.dot(x);
     }
@@ -150,7 +181,7 @@ struct ContactProblem : public NewtonProblem {
     // (Useful for determining reasonable step lengths to take when the Newton step is not possible.)
     // Note: overridden since the estimation of velocity only needs the DER dofs and not the material variables   
     virtual Real characteristicDistance(const Eigen::VectorXd &d) const override {
-        return m_rods.approxLinfVelocity(d.head(numVars())) / m_characteristicLength;
+        return m_tencer.approxLinfVelocity(d.head(numVars())) / m_characteristicLength;
     }
 
     virtual void writeIterateFiles(size_t /*it*/)                   const override { if (writeIterates) { assert(false); } }
@@ -169,7 +200,7 @@ struct ContactProblem : public NewtonProblem {
 
     void updateConstraintSet() {
         BENCHMARK_START_TIMER_SECTION("Build constraint set");
-        m_constraintSet.build(m_collisionMesh, m_rods.deformedPointsMatrix(), m_options.dHat);
+        m_constraintSet.build(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_options.dHat);
         BENCHMARK_STOP_TIMER_SECTION("Build constraint set");
 
         clearConstraintsBetweenNeighboringEdges();
@@ -191,25 +222,25 @@ struct ContactProblem : public NewtonProblem {
 
         for (int i = 0; i < int(vv_const.size()); i++) {
             const auto &vertex_indices = vv_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi)) {
+            if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi)) {
                 vv_const.erase(vv_const.begin() + i);
                 i--;
             }
         }
         for (int i = 0; i < int(ev_const.size()); i++) {
             const auto &vertex_indices = ev_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi)) {
+            if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi) || 
+                m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi)) {
                 ev_const.erase(ev_const.begin() + i);
                 i--;
             }
         }
         for (int i = 0; i < int(ee_const.size()); i++) {
             const auto &vertex_indices = ee_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[3], mdi) ||
-                m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[2], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[3], mdi)) {
+            if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi) || 
+                m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[3], mdi) ||
+                m_tencer.elementsAreNeighbors(vertex_indices[1], vertex_indices[2], mdi) || 
+                m_tencer.elementsAreNeighbors(vertex_indices[1], vertex_indices[3], mdi)) {
                 ee_const.erase(ee_const.begin() + i);
                 i--;
             }
@@ -223,8 +254,8 @@ struct ContactProblem : public NewtonProblem {
     void updateCharacteristicLength() { 
         Pt3 bbMin = Eigen::Vector3d::Ones()*std::numeric_limits<Real>::max();
         Pt3 bbMax = Eigen::Vector3d::Ones()*std::numeric_limits<Real>::min();
-        const std::vector<Pt3> &pts = m_rods.deformedPoints();
-        const size_t nv = m_rods.numVertices();
+        const std::vector<Pt3> &pts = m_tencer.deformedPoints();
+        const size_t nv = m_tencer.numVertices();
         for (size_t i = 0; i < nv; i++) {
             bbMin = bbMin.cwiseMin(pts[i]);
             bbMax = bbMax.cwiseMax(pts[i]);
@@ -234,7 +265,19 @@ struct ContactProblem : public NewtonProblem {
 
     void updateCachedVars() {
         m_cachedVars.resize(numVars());
-        m_cachedVars.head(m_rods.numDoF()) = m_rods.getDoFs();
+        m_cachedVars.head(m_tencer.numDefoVars()) = m_tencer.getDefoVars();
+    }
+
+    void print_constraint_set(){
+        const Eigen::MatrixXi &E = m_collisionMesh.edges();
+        const Eigen::MatrixXi &F = m_collisionMesh.faces();
+        for (size_t i = 0; i < m_constraintSet.size(); i++) {
+            const auto &vertex_indices = m_constraintSet[i].vertex_indices(E, F);
+            for (auto i : vertex_indices) {
+                std::cout << i << " ";
+            }
+            std::cout << std::endl;
+        }
     }
 
     void updateCachedSparsityPattern() {
@@ -242,7 +285,7 @@ struct ContactProblem : public NewtonProblem {
 
         // Compute the constant part of the sparsity pattern only once.
         if (m_rodHessianSparsity.nnz() == 0) {
-            m_rodHessianSparsity = m_rods.hessianSparsityPattern();
+            m_rodHessianSparsity = m_tencer.hessianSparsityPattern();
             m_hessianSparsity = m_rodHessianSparsity;
         }
 
@@ -266,10 +309,10 @@ struct ContactProblem : public NewtonProblem {
                 const auto &vertex_indices = m_constraintSet[i].vertex_indices(E, F);
                 for (auto i : vertex_indices) {
                     if (i != -1) {  // vertex_indices always has size 4; if e.g. the constraint is edge-vertex, the last index will be -1
-                        const size_t dofi = m_rods.globalDofIndexFromGlobalNodeIndex(i);
+                        const size_t dofi = m_tencer.globalDofIndexFromGlobalNodeIndex(i);
                         for (auto j : vertex_indices) {
                             if (j != -1) {
-                                const size_t dofj = m_rods.globalDofIndexFromGlobalNodeIndex(j);
+                                const size_t dofj = m_tencer.globalDofIndexFromGlobalNodeIndex(j);
                                 set3x3Block(dofi, dofj);
                             }
                         }
@@ -291,16 +334,18 @@ struct ContactProblem : public NewtonProblem {
     }
 
     virtual void m_evalHessian(SuiteSparseMatrix &result, bool projectionMask) const override {
+        // std::cout << "m_evalHessian" << std::endl;
+        // std::cout << "m_evalHessian" << std::endl;
         BENCHMARK_SCOPED_TIMER_SECTION timer("m_evalHessian");
         
         result = m_hessianSparsity;
         BENCHMARK_START_TIMER("m_evalHessian_rod");
-        m_rods.hessian(result);
+        m_tencer.hessian(result);
         BENCHMARK_STOP_TIMER("m_evalHessian_rod");
         BENCHMARK_START_TIMER("m_evalHessian_contacts");
         if (m_options.hasCollisions) {
             const bool projectIPCHessian = projectionMask && m_options.projectContactHessianPSD;
-            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * compute_barrier_potential_hessian(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat, projectIPCHessian);
+            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * compute_barrier_potential_hessian(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_constraintSet, m_options.dHat, projectIPCHessian);
 
             // Convert Eigen::SparseMatrix into TripletMatrix; convert dofs from nodes-only to with-theta-vars.
             auto to_upper_triangular_triplet_matrix = [&](Eigen::SparseMatrix<double> & M){
@@ -309,8 +354,8 @@ struct ContactProblem : public NewtonProblem {
                     for (typename Eigen::SparseMatrix<double>::InnerIterator it(M, i); it; ++it) {
                         const size_t node_row = size_t(floor(it.row()/3));
                         const size_t node_col = size_t(floor(it.col()/3));
-                        const size_t row = m_rods.globalDofIndexFromGlobalNodeIndex(node_row) + it.row() % 3;  // adapt dof index to DER extended variables (with thetas)
-                        const size_t col = m_rods.globalDofIndexFromGlobalNodeIndex(node_col) + it.col() % 3;
+                        const size_t row = m_tencer.globalDofIndexFromGlobalNodeIndex(node_row) + it.row() % 3;  // adapt dof index to DER extended variables (with thetas)
+                        const size_t col = m_tencer.globalDofIndexFromGlobalNodeIndex(node_col) + it.col() % 3;
                         if (col < row) continue;
                         triplet_matrix.addNZ(row, col, it.value());
                     }
@@ -326,19 +371,18 @@ struct ContactProblem : public NewtonProblem {
             result.addWithSubSparsity(IPCHessian);
         }
         BENCHMARK_STOP_TIMER("m_evalHessian_contacts");
-        BENCHMARK_START_TIMER("m_evalHessian_softConstraints");
-        for (auto &sc : m_softConstraints)
-            sc->hessian(m_rods, result);
-        BENCHMARK_STOP_TIMER("m_evalHessian_softConstraints");
 
         if (hessianShift != 0.0)
             result.addScaledIdentity(hessianShift);
+
+        // std::cout << "m_evalHessian ok" << std::endl;
+        // std::cout << "m_evalHessian ok" << std::endl;
     }
 
     virtual void m_evalMetric(SuiteSparseMatrix &result) const override {
         result.setZero();
-        SuiteSparseMatrix rodsMassMatrix = m_rods.hessianSparsityPattern();
-        m_rods.massMatrix(rodsMassMatrix, /* updated source; evaluated at the same time as the Hessian */ true, /* useLumped = */ true);
+        SuiteSparseMatrix rodsMassMatrix = m_tencer.hessianSparsityPattern();
+        m_tencer.massMatrix(rodsMassMatrix, /* updated source; evaluated at the same time as the Hessian */ true, /* useLumped = */ true);
         result.addWithSubSparsity(rodsMassMatrix);
     }
 
@@ -356,9 +400,8 @@ struct ContactProblem : public NewtonProblem {
     Real m_characteristicLength = 1.0;
     CallbackFunction m_customCallback;
 
-    PeriodicRodList &m_rods;
+    ContactTencer& m_tencer;
     Eigen::VectorXd m_cachedVars;    // [r1, ..., rn], where ri = [x1, y1, z1, ..., xk, yk, zk, th1, ..., thk-1].
-    SoftConstraintsList m_softConstraints;
     ContactProblemOptions m_options;
 
     // ipc-toolkit
@@ -367,17 +410,13 @@ struct ContactProblem : public NewtonProblem {
 };
 
 
-void minimize_twist(PeriodicRod &rod, bool verbose = false);
-void spread_twist_preserving_link(PeriodicRod &pr, bool verbose = false);
-
 
 ConvergenceReport compute_equilibrium(
-    PeriodicRodList& rods,
+    ContactTencer& tencer,
     const ContactProblemOptions &problemOptions = ContactProblemOptions(),
     const NewtonOptimizerOptions &optimizerOptions = NewtonOptimizerOptions(), 
     std::vector<size_t> fixedVars = std::vector<size_t>(), 
     const Eigen::VectorXd &externalForces = Eigen::VectorXd(),
-    const ContactProblem::SoftConstraintsList &softConstraints = ContactProblem::SoftConstraintsList(),
     CallbackFunction customCallback = nullptr,
     double hessianShift = 0.0
 );
