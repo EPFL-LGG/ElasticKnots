@@ -133,6 +133,7 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("getCoords", &Spring::get_coords)
         .def("getStiffness", &Spring::get_stiffness)
         .def("getRegularizationWeight", &Spring::get_regularization_weight)
+        .def("setRegularizationWeight", &Spring::set_regularization_weight, py::arg("weight"))
         .def("setCoords", &Spring::set_coords, py::arg("coords"))
         .def("setStiffness", &Spring::set_stiffness, py::arg("stiffness"))
         .def("getNumPoints", &Spring::get_num_points)
@@ -168,6 +169,7 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("numDefoVars", &ContactTencer::numDefoVars)
         .def("getDefoVars", &ContactTencer::getDefoVars)
         .def("setDefoVars", &ContactTencer::setDefoVars, py::arg("new_defo_vars"))
+        .def("setSpringRegularizationWeight", &ContactTencer::set_spring_regularization_weight, py::arg("i"), py::arg("weight"))
         // energy and gradients
         .def("energy", py::overload_cast<TencerEnergyType,EnergyType> (&ContactTencer::energy, py::const_), py::arg("robotEnergyType")=TencerEnergyType::Full, py::arg("energyType")=EnergyType::Full)
         .def("gradient", py::overload_cast<TencerEnergyType, bool>(&ContactTencer::gradient,  py::const_), py::arg("robotEnergyType")=TencerEnergyType::Full,py::arg("updateParam") = false)

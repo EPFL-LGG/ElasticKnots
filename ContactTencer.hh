@@ -52,7 +52,6 @@ struct ContactTencer {
     // for gravity
     static constexpr size_t N   = 3; 
     Real rho = 1.0;
-    
 
     // Constructor from rod list and springs
     ContactTencer(const std::vector<PeriodicRod> &rods, const std::vector<Spring> &spr, const std::vector<SpringAttachments> &sav);
@@ -67,7 +66,10 @@ struct ContactTencer {
         castStdADVector(k.springs,springs);
 
         m_numDefoVars = k.numDefoVars();
+        m_num_spring_free_vertices = k.num_spring_free_vertices();
         m_attachment_vertices = k.get_attachment_vertices();
+        m_spring_free_vertices_spring_idx = k.get_spring_free_vertices_spring_idx();
+        m_spring_free_vertices_vertex_idx = k.get_spring_free_vertices_vertex_idx();
 
         update_spring_attached_coords();
     }
@@ -119,6 +121,9 @@ struct ContactTencer {
     size_t numVerticesInRod(size_t i) const {return closed_rods.numVerticesInRod(i);}
     // Remove twist variables (thetas and total opening angle) from the vector of spatial dofs
     Eigen::VectorXd extractNodalDoFs(const Eigen::VectorXd &spatialVars) const;
+    std::vector<int> get_spring_free_vertices_spring_idx() const {return m_spring_free_vertices_spring_idx;};
+    std::vector<int> get_spring_free_vertices_vertex_idx() const {return m_spring_free_vertices_vertex_idx;};
+    void set_spring_regularization_weight(size_t i, double weight) {springs[i].set_regularization_weight(weight);}
 
     Vec3 find_vertex_coords(size_t rod_idx, int num_vertex);
     void update_spring_attached_coords();

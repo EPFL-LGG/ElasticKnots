@@ -100,6 +100,7 @@ struct  Spring_T {
     double get_rest_length() const {return rest_length;}
     double get_stiffness() const {return stiffness;}
     double get_regularization_weight() const {return regularization_weight;}
+    void set_regularization_weight(double weight) {regularization_weight = weight;}
     Real_ get_total_length() const;
     void set_coords(std::vector<Vec3_T> &c){positions = c;}
     void set_stiffness(double s){stiffness = s;}
