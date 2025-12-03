@@ -202,7 +202,8 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("contactForces",             &ContactProblem::contactForces)
         .def_readwrite("externalForces",  &ContactProblem::external_forces)
         .def_readwrite("options",         &ContactProblem::m_options)
-        .def_readwrite("constraintSet",   &ContactProblem::m_constraintSet)
+        .def_readwrite("barrierPotential", &ContactProblem::m_barrierPotential)
+        .def_readwrite("normalCollisions", &ContactProblem::m_normalCollisions)
         .def_readwrite("collisionMesh",   &ContactProblem::m_collisionMesh)
     ;
 
@@ -210,6 +211,8 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def(py::init<ContactTencer &, ContactProblemOptions>(), 
             py::arg("tencer"), py::arg("problemOptions"))
         .def("getTencerCopy", &ContactProblemTencer::get_tencer_copy)
+        .def_readwrite("barrierPotential", &ContactProblemTencer::m_barrierPotential)
+        .def_readwrite("normalCollisions", &ContactProblemTencer::m_normalCollisions)
         .def_readwrite("collisionMesh",   &ContactProblemTencer::m_collisionMesh)
         .def("getVars",                   &ContactProblemTencer::getVars)
         .def("numVars",                   &ContactProblemTencer::numVars)
@@ -264,8 +267,8 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def_readwrite("hasCollisions",             &ContactProblemOptions::hasCollisions)
         .def_readwrite("printIterInfo",             &ContactProblemOptions::printIterInfo)
         .def_readwrite("minContactEdgeDist",        &ContactProblemOptions::minContactEdgeDist)
-        .def_readwrite("Wang2021MaxIter",           &ContactProblemOptions::Wang2021MaxIter)
         .def_readwrite("projectContactHessianPSD",  &ContactProblemOptions::projectContactHessianPSD)
+        .def_readwrite("convergentIPC",             &ContactProblemOptions::convergentIPC)
         .def_readwrite("contactStiffness",          &ContactProblemOptions::contactStiffness)
         .def_readwrite("dHat",                      &ContactProblemOptions::dHat)
     ;

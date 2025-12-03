@@ -7,11 +7,13 @@
 #include <Eigen/Core>
 #include "PeriodicRodList.hh"
 #include "SoftConstraint.hh"
-#include <tight_inclusion/ccd.hpp>
 #include <ipc/ipc.hpp>
+#include <ipc/collisions/normal/normal_collisions.hpp>
+#include <ipc/potentials/barrier_potential.hpp>
 #include <MeshFEM/newton_optimizer/newton_optimizer.hh>
 
 #include <functional>
+#include <memory>
 
 using CallbackFunction = std::function<void(NewtonProblem &, size_t)>;
 
@@ -19,8 +21,8 @@ struct ContactProblemOptions {
     bool hasCollisions = true;               // Detect collision and prevent penetration
     bool printIterInfo = false;              // Print information at each iteration
     size_t minContactEdgeDist = 1;           // The minimum distance (in indices) for two edges to be included in the contact set. Note: values > 1 break guarantees of topology preservation.
-    size_t Wang2021MaxIter = 1e6;            // Maximum number of iterations for Tight-Inclusion CCD [Wang et al. 2021]
     bool projectContactHessianPSD = false;   // Project each individual contacts' Hessian to make them positive semi-definite before assembling the problem Hessian
+    bool convergentIPC = false;              // Whether to use the convergent IPC formulation from [Li et al. 2023]; if false, use the original IPC formulation from [Li et al. 2020]
     Real contactStiffness = 1.0;             // Relative stiffness of the contact constraints
     Real dHat = 1e-7;                        // Distance at which the barrier eneregy is clamped to zero (repulsion only for distance < dHat, see [Li et al. 2020])
 };
@@ -31,7 +33,7 @@ struct ContactProblem : public NewtonProblem {
     ContactProblem(
         PeriodicRodList &rods, 
         ContactProblemOptions options = ContactProblemOptions()
-        ) : m_rods(rods), m_options(options) {
+        ) : m_rods(rods), m_options(options), m_barrierPotential(1.0) {  // Initialize barrier potential with dHat = 1.0 (no default constructor, will be updated later if collisions are enabled)
 
         updateCachedVars();
         updateCachedSparsityPattern();
@@ -56,6 +58,9 @@ struct ContactProblem : public NewtonProblem {
                 edges(fni + nvr - 1, 1) = fni;  // overwrite second node in last edge
             }
             m_collisionMesh = ipc::CollisionMesh(vertices, edges, faces);
+
+            // Initialize BarrierPotential
+            m_barrierPotential = ipc::BarrierPotential(m_options.dHat);
 
             updateConstraintSet();
             updateCachedSparsityPattern();
@@ -85,7 +90,7 @@ struct ContactProblem : public NewtonProblem {
     virtual const Eigen::VectorXd getVars() const override { return m_cachedVars; }
     virtual size_t numVars() const override { return m_rods.numDoF(); }
     size_t numRods() const { return m_rods.size(); }
-    size_t numIPCConstraints() const { return m_constraintSet.size(); }
+    size_t numIPCConstraints() const { return m_normalCollisions.size(); }
     
     virtual bool hasCollisions() const { return m_options.hasCollisions; };
 
@@ -105,7 +110,7 @@ struct ContactProblem : public NewtonProblem {
         Eigen::VectorXd result = Eigen::VectorXd::Zero(numVars());
         result.head(numVars()) = m_rods.gradient(freshIterate);        // rods
         if (m_options.hasCollisions) {
-            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            Eigen::VectorXd bpGrad = m_options.contactStiffness * m_barrierPotential.gradient(m_normalCollisions, m_collisionMesh, m_rods.deformedPointsMatrix());
             for (size_t ri = 0; ri < m_rods.size(); ri++)
                 result.segment(m_rods.firstGlobalDofIndexInRod(ri), 3*m_rods.numVerticesInRod(ri)) += bpGrad.segment(3*m_rods.firstGlobalNodeIndexInRod(ri), 3*m_rods.numVerticesInRod(ri));
         }
@@ -121,14 +126,14 @@ struct ContactProblem : public NewtonProblem {
     Real contactEnergy() const {
         Real energy = 0;
         if (m_options.hasCollisions)
-            energy = m_options.contactStiffness * compute_barrier_potential(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            energy = m_options.contactStiffness * m_barrierPotential(m_normalCollisions, m_collisionMesh, m_rods.deformedPointsMatrix());
         return energy;
     }
 
     Eigen::MatrixXd contactForces() const {
         Eigen::MatrixXd result = Eigen::MatrixXd::Zero(m_rods.numVertices(), 3);
         if (m_options.hasCollisions) {
-            Eigen::VectorXd bpGrad = m_options.contactStiffness * compute_barrier_potential_gradient(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat);
+            Eigen::VectorXd bpGrad = m_options.contactStiffness * m_barrierPotential.gradient(m_normalCollisions, m_collisionMesh, m_rods.deformedPointsMatrix());
             for (size_t i = 0; i < m_rods.numEdges(); i++)
                 result.row(i) = - bpGrad.segment(3*i, 3);
         }
@@ -168,8 +173,15 @@ struct ContactProblem : public NewtonProblem {
     Eigen::VectorXd external_forces;
 
     void updateConstraintSet() {
+        if (!m_options.hasCollisions)
+            return;
+
         BENCHMARK_START_TIMER_SECTION("Build constraint set");
-        m_constraintSet.build(m_collisionMesh, m_rods.deformedPointsMatrix(), m_options.dHat);
+        // if (m_options.convergentIPC)
+        //     m_normalCollisions.set_use_area_weighting(true);
+        //     m_normalCollisions.set_use_improved_max_approximator(true);
+
+        m_normalCollisions.build(m_collisionMesh, m_rods.deformedPointsMatrix(), m_options.dHat);
         BENCHMARK_STOP_TIMER_SECTION("Build constraint set");
 
         clearConstraintsBetweenNeighboringEdges();
@@ -178,42 +190,42 @@ struct ContactProblem : public NewtonProblem {
     void clearConstraintsBetweenNeighboringEdges() {
         BENCHMARK_SCOPED_TIMER_SECTION timer("Remove constraints on neighboring edges");
 
-        // minContactEdgeDist controls the neighborhood size in indices units.
-        // The default value is 1, which excluded adjacent edges from the contact set; 
-        // values > 1 should be used for fine meshes (i.e. when edges' length is comparable or smaller 
-        // than the radius of the collision mesh), but break guarantees of no false negatives.
-        size_t mdi = m_options.minContactEdgeDist;
-        const Eigen::MatrixXi &E = m_collisionMesh.edges();
-        const Eigen::MatrixXi &F = m_collisionMesh.faces();
-        auto &vv_const = m_constraintSet.vv_constraints;
-        auto &ev_const = m_constraintSet.ev_constraints;
-        auto &ee_const = m_constraintSet.ee_constraints;
+        // // minContactEdgeDist controls the neighborhood size in indices units.
+        // // The default value is 1, which excluded adjacent edges from the contact set; 
+        // // values > 1 should be used for fine meshes (i.e. when edges' length is comparable or smaller 
+        // // than the radius of the collision mesh), but break guarantees of no false negatives.
+        // size_t mdi = m_options.minContactEdgeDist;
+        // const Eigen::MatrixXi &E = m_collisionMesh.edges();
+        // const Eigen::MatrixXi &F = m_collisionMesh.faces();
+        // auto &vv_const = m_normalCollisions.vv_constraints;
+        // auto &ev_const = m_normalCollisions.ev_constraints;
+        // auto &ee_const = m_normalCollisions.ee_constraints;
 
-        for (int i = 0; i < int(vv_const.size()); i++) {
-            const auto &vertex_indices = vv_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi)) {
-                vv_const.erase(vv_const.begin() + i);
-                i--;
-            }
-        }
-        for (int i = 0; i < int(ev_const.size()); i++) {
-            const auto &vertex_indices = ev_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi)) {
-                ev_const.erase(ev_const.begin() + i);
-                i--;
-            }
-        }
-        for (int i = 0; i < int(ee_const.size()); i++) {
-            const auto &vertex_indices = ee_const[i].vertex_indices(E, F);
-            if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[3], mdi) ||
-                m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[2], mdi) || 
-                m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[3], mdi)) {
-                ee_const.erase(ee_const.begin() + i);
-                i--;
-            }
-        }
+        // for (int i = 0; i < int(vv_const.size()); i++) {
+        //     const auto &vertex_indices = vv_const[i].vertex_indices(E, F);
+        //     if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi)) {
+        //         vv_const.erase(vv_const.begin() + i);
+        //         i--;
+        //     }
+        // }
+        // for (int i = 0; i < int(ev_const.size()); i++) {
+        //     const auto &vertex_indices = ev_const[i].vertex_indices(E, F);
+        //     if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi) || 
+        //         m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi)) {
+        //         ev_const.erase(ev_const.begin() + i);
+        //         i--;
+        //     }
+        // }
+        // for (int i = 0; i < int(ee_const.size()); i++) {
+        //     const auto &vertex_indices = ee_const[i].vertex_indices(E, F);
+        //     if (m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi) || 
+        //         m_rods.elementsAreNeighbors(vertex_indices[0], vertex_indices[3], mdi) ||
+        //         m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[2], mdi) || 
+        //         m_rods.elementsAreNeighbors(vertex_indices[1], vertex_indices[3], mdi)) {
+        //         ee_const.erase(ee_const.begin() + i);
+        //         i--;
+        //     }
+        // }
     }
 
     virtual void m_iterationCallback(size_t i) override;
@@ -262,8 +274,8 @@ struct ContactProblem : public NewtonProblem {
             };
             const Eigen::MatrixXi &E = m_collisionMesh.edges();
             const Eigen::MatrixXi &F = m_collisionMesh.faces();
-            for (size_t i = 0; i < m_constraintSet.size(); i++) {
-                const auto &vertex_indices = m_constraintSet[i].vertex_indices(E, F);
+            for (size_t i = 0; i < m_normalCollisions.size(); i++) {
+                const auto &vertex_indices = m_normalCollisions[i].vertex_ids(E, F);
                 for (auto i : vertex_indices) {
                     if (i != -1) {  // vertex_indices always has size 4; if e.g. the constraint is edge-vertex, the last index will be -1
                         const size_t dofi = m_rods.globalDofIndexFromGlobalNodeIndex(i);
@@ -300,7 +312,7 @@ struct ContactProblem : public NewtonProblem {
         BENCHMARK_START_TIMER("m_evalHessian_contacts");
         if (m_options.hasCollisions) {
             const bool projectIPCHessian = projectionMask && m_options.projectContactHessianPSD;
-            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * compute_barrier_potential_hessian(m_collisionMesh, m_rods.deformedPointsMatrix(), m_constraintSet, m_options.dHat, projectIPCHessian);
+            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * m_barrierPotential.hessian(m_normalCollisions, m_collisionMesh, m_rods.deformedPointsMatrix());
 
             // Convert Eigen::SparseMatrix into TripletMatrix; convert dofs from nodes-only to with-theta-vars.
             auto to_upper_triangular_triplet_matrix = [&](Eigen::SparseMatrix<double> & M){
@@ -362,7 +374,8 @@ struct ContactProblem : public NewtonProblem {
     ContactProblemOptions m_options;
 
     // ipc-toolkit
-    ipc::Constraints m_constraintSet;
+    ipc::BarrierPotential m_barrierPotential;
+    ipc::NormalCollisions m_normalCollisions;
     ipc::CollisionMesh m_collisionMesh;  // Mesh connectivity
 };
 

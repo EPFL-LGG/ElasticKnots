@@ -91,7 +91,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 ################################################################################
 # Common libraries
 ################################################################################
-add_subdirectory(${THIRD_PARTY_DIR}/Tight-Inclusion)
+
 add_subdirectory(${THIRD_PARTY_DIR}/ipc-toolkit)
 add_library(tbb::tbb ALIAS tbb)  # ipc-toolkit uses TBB::tbb as tbb's alias, but elastic_rods uses tbb::tbb instead (if we do not define the right alias, the `tbb` target appears twice, generating an error)
 add_subdirectory(${THIRD_PARTY_DIR}/ElasticRods)
@@ -100,7 +100,7 @@ add_subdirectory(${THIRD_PARTY_DIR}/ElasticRods)
 # Elastic Knots Library
 ################################################################################
 add_library(ElasticKnots ContactProblem.cc OneSidedQuadratic.hh Spring.hh Spring.cc ContactTencer.hh ContactTencer.cc ContactProblemTencer.hh ContactProblemTencer.cc)
-target_link_libraries(ElasticKnots ElasticRods tight_inclusion)
+target_link_libraries(ElasticKnots ElasticRods)
 target_link_libraries(ElasticKnots ipc::toolkit)
 set_target_properties(ElasticKnots PROPERTIES CXX_STANDARD 14)
 set_target_properties(ElasticKnots PROPERTIES CXX_STANDARD_REQUIRED ON)

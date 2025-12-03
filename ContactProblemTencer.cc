@@ -24,7 +24,7 @@ std::pair<Real, size_t> ContactProblemTencer::feasibleStepLength(const Eigen::Ve
         const Eigen::MatrixXd V1 = V0 + Eigen::Map<Eigen::Matrix<Real, Eigen::Dynamic, 3, Eigen::RowMajor>>(nodalStep.data(), m_tencer.numVertices() + m_tencer.num_spring_free_vertices(), 3);
         // std::cout << "V0" << V0 << std::endl;
         // std::cout << "V1" << V1 << std::endl;
-        alpha = compute_collision_free_stepsize(m_collisionMesh, V0, V1, ipc::BroadPhaseMethod::HASH_GRID, m_options.dHat, m_options.Wang2021MaxIter);
+        alpha = ipc::compute_collision_free_stepsize(m_collisionMesh, V0, V1);
         // std::cout << "feasible step length 3" << std::endl;
         // std::cout << "feasible step length 3" << std::endl;
     }

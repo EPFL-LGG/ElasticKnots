@@ -96,7 +96,7 @@ struct PeriodicRodList {
         size_t rj = rodIndexFromGlobalNodeIndex(j);
         if (ri != rj)
             return false;
-        return m_rods[ri]->elementsAreNeighbors(i, j, d);
+        return m_rods[ri]->elementsAreNeighbors(localNodeIndex(i), localNodeIndex(j), d);
     }
 
     bool isValidContactEdge(size_t ei) const { return localEdgeIndex(ei) < m_numElemsPerRod[rodIndexFromGlobalEdgeIndex(ei)]; }
@@ -376,6 +376,23 @@ struct PeriodicRodList {
     size_t firstGlobalEdgeIndexInRod        (size_t ri) const { return firstGlobalNodeIndexInRod(ri); }
     size_t rodIndexFromGlobalEdgeIndex      (size_t gi) const { return rodIndexFromGlobalNodeIndex(gi); }
     size_t globalDofIndexFromGlobalEdgeIndex(size_t gi) const { return globalDofIndexFromGlobalNodeIndex(gi); }
+
+    // Global edge index from pair of global node indices
+    size_t globalEdgeIndexFromGlobalNodeIndices(size_t gni1, size_t gni2) const {
+        assert(gni1 < numVertices() && gni2 < numVertices());
+        size_t ri1 = rodIndexFromGlobalNodeIndex(gni1);
+        size_t ri2 = rodIndexFromGlobalNodeIndex(gni2);
+        if (ri1 != ri2)
+            throw std::runtime_error("Nodes do not belong to the same rod");
+        size_t li1 = localNodeIndex(gni1);
+        size_t li2 = localNodeIndex(gni2);
+        if ( (li1 + 1) % numVerticesInRod(ri1) == li2 )
+            return gni1;
+        else if ( (li2 + 1) % numVerticesInRod(ri1) == li1 )
+            return gni2;
+        else
+            throw std::runtime_error("Nodes are not neighbors");
+    }
 
 private:
 

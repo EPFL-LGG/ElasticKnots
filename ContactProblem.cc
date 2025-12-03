@@ -16,7 +16,7 @@ std::pair<Real, size_t> ContactProblem::feasibleStepLength(const Eigen::VectorXd
         Eigen::VectorXd nodalStep = m_rods.extractNodalDoFs(step.head(numVars()));
         const Eigen::MatrixXd V0 = Eigen::Map<Eigen::Matrix<Real, Eigen::Dynamic, 3, Eigen::RowMajor>>(nodalVars.data(), m_rods.numVertices(), 3);
         const Eigen::MatrixXd V1 = V0 + Eigen::Map<Eigen::Matrix<Real, Eigen::Dynamic, 3, Eigen::RowMajor>>(nodalStep.data(), m_rods.numVertices(), 3);
-        alpha = compute_collision_free_stepsize(m_collisionMesh, V0, V1, ipc::BroadPhaseMethod::HASH_GRID, m_options.dHat, m_options.Wang2021MaxIter);
+        alpha = ipc::compute_collision_free_stepsize(m_collisionMesh, V0, V1);
     }
 
     if (m_options.printIterInfo) {
