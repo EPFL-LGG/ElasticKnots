@@ -96,6 +96,13 @@ add_subdirectory(${THIRD_PARTY_DIR}/ipc-toolkit)
 add_library(tbb::tbb ALIAS tbb)  # ipc-toolkit uses TBB::tbb as tbb's alias, but elastic_rods uses tbb::tbb instead (if we do not define the right alias, the `tbb` target appears twice, generating an error)
 add_subdirectory(${THIRD_PARTY_DIR}/ElasticRods)
 
+# Prefer the vendored libigl headers (in-tree) for ElasticRods targets so the
+# compiler finds our patched/controlled copy before any CPM cached copy (which might be coming from another dependency, e.g., ipc-toolkit).
+# This does the same include-order preference as editing the ElasticRods CMake file but keeps the change at the repository root.
+# This is a temporary patch, to be removed by updating ElasticRods.
+target_include_directories(ElasticRods PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ElasticRods/3rdparty/libigl/include)
+target_include_directories(RodLinkages PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ElasticRods/3rdparty/libigl/include)
+
 ################################################################################
 # Elastic Knots Library
 ################################################################################

@@ -194,7 +194,7 @@ PYBIND11_MODULE(elastic_knots, m) {
         .def("addSoftConstraint",         &ContactProblem::addSoftConstraint,  py::arg("softConstraint"))
         .def("addSoftConstraints",        &ContactProblem::addSoftConstraints, py::arg("softConstraints"))
         .def("hasCollisions",             &ContactProblem::hasCollisions)
-        .def("updateConstraintSet",       &ContactProblem::updateConstraintSet)
+        .def("updateCollisions",          &ContactProblem::updateCollisions)
         .def("contactEnergy",             &ContactProblem::contactEnergy)
         .def("externalPotentialEnergy",   &ContactProblem::externalPotentialEnergy)
         .def("hessianSparsityPattern",    &ContactProblem::hessianSparsityPattern)

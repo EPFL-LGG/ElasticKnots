@@ -96,7 +96,13 @@ struct ContactProblemTencer : public NewtonProblem {
             // }
             // m_tencer.print_neighbors(m_options.minContactEdgeDist);
 
-            updateConstraintSet();
+            if (m_options.convergentIPC) {
+                m_normalCollisions.set_use_area_weighting(true);
+                m_normalCollisions.set_use_improved_max_approximator(true);
+                m_barrierPotential.set_use_physical_barrier(true);
+            }
+
+            updateCollisions();
             updateCachedSparsityPattern();
         }
 
@@ -119,7 +125,7 @@ struct ContactProblemTencer : public NewtonProblem {
     virtual void setVars(const Eigen::VectorXd &vars) override {
         m_tencer.setDefoVars(vars.head(numVars()));
         if (m_options.hasCollisions)
-            updateConstraintSet();
+            updateCollisions();
         m_cachedVars = vars;
     }
     virtual const Eigen::VectorXd getVars() const override { return m_cachedVars; }
@@ -202,61 +208,69 @@ struct ContactProblemTencer : public NewtonProblem {
     // other loading scenario.
     Eigen::VectorXd external_forces;
 
-    void updateConstraintSet() {
+    void updateCollisions() {
         if (!m_options.hasCollisions)
             return;
 
         BENCHMARK_START_TIMER_SECTION("Build constraint set");
-        // if (m_options.convergentIPC)
-        //     m_normalCollisions.set_use_area_weighting(true);
-        //     m_normalCollisions.set_use_improved_max_approximator(true);
 
         m_normalCollisions.build(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_options.dHat);
 
         BENCHMARK_STOP_TIMER_SECTION("Build constraint set");
 
-        clearConstraintsBetweenNeighboringEdges();
+        clearCollisionsBetweenNeighboringElements();
     }
 
-    void clearConstraintsBetweenNeighboringEdges() {
+    void clearCollisionsBetweenNeighboringElements() { clearCollisionsBetweenNeighboringElements(m_normalCollisions, m_collisionMesh, m_options.minContactEdgeDist); }
+
+    void clearCollisionsBetweenNeighboringElements(ipc::NormalCollisions &normal_collisions, const ipc::CollisionMesh &collision_mesh, int min_dist = 1) {
         BENCHMARK_SCOPED_TIMER_SECTION timer("Remove constraints on neighboring edges");
 
-        // // minContactEdgeDist controls the neighborhood size in indices units.
-        // // The default value is 1, which excluded adjacent edges from the contact set; 
-        // // values > 1 should be used for fine meshes (i.e. when edges' length is comparable or smaller 
-        // // than the radius of the collision mesh), but break guarantees of no false negatives.
-        // size_t mdi = m_options.minContactEdgeDist;
-        // const Eigen::MatrixXi &E = m_collisionMesh.edges();
-        // const Eigen::MatrixXi &F = m_collisionMesh.faces();
-        // auto &vv_const = m_normalCollisions.vv_constraints;
-        // auto &ev_const = m_normalCollisions.ev_constraints;
-        // auto &ee_const = m_normalCollisions.ee_constraints;
+        // minContactEdgeDist controls the neighborhood size in indices units.
+        // The default value is 1, which excluded adjacent edges from the contact set; 
+        // values > 1 should be used for fine meshes (i.e. when edges' length is comparable or smaller 
+        // than the radius of the collision mesh), but break guarantees of no false negatives.
+        size_t mdi = min_dist;
+        const Eigen::MatrixXi &E = collision_mesh.edges();
+        const Eigen::MatrixXi &F = collision_mesh.faces();
+        auto &vv_coll = normal_collisions.vv_collisions;
+        auto &ev_coll = normal_collisions.ev_collisions;
+        auto &ee_coll = normal_collisions.ee_collisions;
 
-        // for (int i = 0; i < int(vv_const.size()); i++) {
-        //     const auto &vertex_indices = vv_const[i].vertex_indices(E, F);
-        //     if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi)) {
-        //         vv_const.erase(vv_const.begin() + i);
-        //         i--;
-        //     }
-        // }
-        // for (int i = 0; i < int(ev_const.size()); i++) {
-        //     const auto &vertex_indices = ev_const[i].vertex_indices(E, F);
-        //     if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[1], mdi) || 
-        //         m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi)) {
-        //         ev_const.erase(ev_const.begin() + i);
-        //         i--;
-        //     }
-        // }
-        // for (int i = 0; i < int(ee_const.size()); i++) {
-        //     const auto &vertex_indices = ee_const[i].vertex_indices(E, F);
-        //     if (m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[2], mdi) || 
-        //         m_tencer.elementsAreNeighbors(vertex_indices[0], vertex_indices[3], mdi) ||
-        //         m_tencer.elementsAreNeighbors(vertex_indices[1], vertex_indices[2], mdi) || 
-        //         m_tencer.elementsAreNeighbors(vertex_indices[1], vertex_indices[3], mdi)) {
-        //         ee_const.erase(ee_const.begin() + i);
-        //         i--;
-        //     }
-        // }
+        for (int i = 0; i < int(vv_coll.size()); i++) {
+            const auto &vertex_indices = vv_coll[i].vertex_ids(E, F);
+            size_t v0 = vertex_indices[0];
+            size_t v1 = vertex_indices[1];
+            if (m_tencer.elementsAreNeighbors(v0, v1, mdi)) {
+                vv_coll.erase(vv_coll.begin() + i);
+                i--;
+            }
+        }
+        for (int i = 0; i < int(ev_coll.size()); i++) {
+            const auto &vertex_indices = ev_coll[i].vertex_ids(E, F);
+            size_t v0 = vertex_indices[0];
+            size_t e0 = vertex_indices[1];
+            size_t e1 = vertex_indices[2];
+            if (m_tencer.elementsAreNeighbors(v0, e0, mdi) || 
+                m_tencer.elementsAreNeighbors(v0, e1, mdi)) {
+                ev_coll.erase(ev_coll.begin() + i);
+                i--;
+            }
+        }
+        for (int i = 0; i < int(ee_coll.size()); i++) {
+            const auto &vertex_indices = ee_coll[i].vertex_ids(E, F);
+            size_t ea0 = vertex_indices[0];
+            size_t ea1 = vertex_indices[1];
+            size_t eb0 = vertex_indices[2];
+            size_t eb1 = vertex_indices[3];
+            if (m_tencer.elementsAreNeighbors(ea0, eb0, mdi) || 
+                m_tencer.elementsAreNeighbors(ea0, eb1, mdi) ||
+                m_tencer.elementsAreNeighbors(ea1, eb0, mdi) || 
+                m_tencer.elementsAreNeighbors(ea1, eb1, mdi)) {
+                ee_coll.erase(ee_coll.begin() + i);
+                i--;
+            }
+        }
     }
 
     virtual void m_iterationCallback(size_t i) override;
@@ -356,9 +370,8 @@ struct ContactProblemTencer : public NewtonProblem {
         BENCHMARK_STOP_TIMER("m_evalHessian_rod");
         BENCHMARK_START_TIMER("m_evalHessian_contacts");
         if (m_options.hasCollisions) {
-            const bool projectIPCHessian = projectionMask && m_options.projectContactHessianPSD;
-            // Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * compute_barrier_potential_hessian(m_collisionMesh, m_tencer.deformedPointsMatrix(), m_normalCollisions, m_options.dHat, projectIPCHessian);
-            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * m_barrierPotential.hessian(m_normalCollisions, m_collisionMesh, m_tencer.deformedPointsMatrix());
+            ipc::PSDProjectionMethod hessProjMethod = (projectionMask && m_options.projectContactHessianPSD) ? ipc::PSDProjectionMethod::CLAMP : ipc::PSDProjectionMethod::NONE;
+            Eigen::SparseMatrix<double> IPCHessianEigen = m_options.contactStiffness * m_barrierPotential.hessian(m_normalCollisions, m_collisionMesh, m_tencer.deformedPointsMatrix(), hessProjMethod);
 
             // Convert Eigen::SparseMatrix into TripletMatrix; convert dofs from nodes-only to with-theta-vars.
             auto to_upper_triangular_triplet_matrix = [&](Eigen::SparseMatrix<double> & M){
