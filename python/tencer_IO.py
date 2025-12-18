@@ -24,13 +24,14 @@ def load_from_json(filename):
     springs = []
     attachment_vertices = []
         
-        
+    num_rod_defovars = 0 
     for i in range(num_closed_rods):
         rod_points = tencer_data['restPoints'][i]
         closed_rods.append(PeriodicRod(rod_points, zeroRestCurvature=True))
         rod_young_modulus = young_modulus[i]
         material = RodMaterial('ellipse', rod_young_modulus, 0.5, [c[i], c[i]])  # circular cross-section
         closed_rods[-1].setMaterial(material)
+        num_rod_defovars += closed_rods[-1].numDoF()
         # closed_rods[-1].rod.setRestLengths(tencer_data['rodRestLengths'][i])
         # closed_rods[-1].rod.setRestDirectors(buildRestDirectors(tencer_data['restDirectors'][i]))
         # closed_rods[-1].rod.deformedConfiguration().initialize_from_data(rod_points,buildRestDirectors(tencer_data['referenceDirectors'][i]),tencer_data['sourceTangents'][i])
@@ -38,13 +39,15 @@ def load_from_json(filename):
       
     
     for i in range(num_springs):
-        springs.append(Spring(np.zeros((2,3)),tencer_data['springStiffnesses'][i],tencer_data['springRestLengths'][i]))
+        spring_coords = tencer_data['springCoords'][i]
+        springs.append(Spring(spring_coords,tencer_data['springStiffnesses'][i],tencer_data['springRestLengths'][i],CompressionType.NoCompression))
         attachment_vertices.append(SpringAttachments(*tencer_data['attachmentVertices'][i]))
         
     tencer = ContactTencer(closed_rods,springs,attachment_vertices)
     
-    
-    tencer.setDefoVars(tencer_data['defoVars'])
+    v = tencer.getDefoVars()
+    v[:num_rod_defovars] = tencer_data['defoVars'][:num_rod_defovars]
+    tencer.setDefoVars(v)
     
     return tencer
 
@@ -78,14 +81,17 @@ def save_to_json(tencer,filename):
 
 
 
-    # # Springs
+    # Springs
+    dico['springNumPoints'] = [s.getNumPoints() for s in springs]
     dico['attachmentVertices'] = attachment_vertices_to_list(tencer.getAttachmentVertices())
     dico['springRestLengths'] = [s.getRestLength() for s in springs]
     dico['springStiffnesses'] = [s.getStiffness() for s in springs]
+    dico['springCoords'] = [[list(c) for c in s.getCoords()] for s in springs]
+
     
 
     with open(filename, 'w') as f:
-        json.dump(dico,f)
+        json.dump(dico,f,indent=4)
 
 
 
@@ -111,7 +117,7 @@ def directors_to_list(d):
 
 def attachment_vertices_to_list(attachment_vertices):
     lst = []
-    for v in attachment_vertices: 
+    for j,v in enumerate(attachment_vertices): 
         rod_idx_list = []
         rod_v_list = []
         spring_v_list = []

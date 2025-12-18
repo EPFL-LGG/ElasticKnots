@@ -67,6 +67,7 @@ struct  Spring_T {
         compression_tolerance = sp.compression_tolerance;
     }
 
+    Real_ length_energy() const;
     Real_ energy() const;
     
     // Derivatives 
@@ -93,6 +94,10 @@ struct  Spring_T {
     Real_ Q(Real_ x) const;
     Real_ dQ_dx(Real_ x) const;
     Real_ d2Q_dx2(Real_ x) const;
+
+    Real_ dElength_dL() const;
+    Real_ dEreg_dL() const;
+    Real_ dE_dL() const;
     
     size_t get_num_points() const {return positions.size();}
     Vec3_T get_point_coords(size_t i) const {return positions[i];}
